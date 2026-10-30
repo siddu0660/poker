@@ -44,6 +44,7 @@ check_ipo_supported(RESULT PF_IPO_OK OUTPUT PF_IPO_MSG)
 
 add_library(pokercore STATIC
   src/core/Rules.cpp
+  src/core/Evaluator.cpp
   src/util/Log.cpp
 )
 target_include_directories(pokercore PUBLIC src)

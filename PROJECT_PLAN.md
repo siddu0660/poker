@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **M0 (headless) and M1 done; M2 next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **M0 (headless), M1 and M2 done; M3 (wild cards) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -178,6 +178,8 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
   - Flush: the best suit with `n + k ≥ 5`, wilds filling the highest missing ranks.
   - Kickers: leftover wilds become the highest unused rank.
 - Targets: ≥ 30M evals/s/core on the no-wild path.
+- **Semantics (decided in M2)**: a 5-card hand *satisfies* every category its rank counts and suits allow (AAAKK is a full house, trips, two pair and a pair). Its value is the best enabled category it satisfies, tie-broken by that category's defining ranks and then the remaining cards high to low. A 7-card hand is worth its best 5-card subset. The tests check this definition directly with a brute-force reference.
+- **Three paths**: *Standard* (standard order, all types on) returns at the first hit. *Monotone* (every containing type is enabled and ranks higher, e.g. short deck) takes the max over table candidates and runs at the same speed. *General* (any other custom order or disabled type) counts kickers as a multiset and runs at about 7M evals/s/core.
 
 ### 5.4 Simulator
 - **Scenario**: rules, board (0–5 cards), seats (active/folded; hole cards known or random).
@@ -358,8 +360,8 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 |---|---|---|
 | M0 | Skeleton: CMake + Ninja presets for all 3 OSes, empty window with dockspace | [~] headless core, presets, tests done; dockspace window waits for M6 deps |
 | M1 | Cards, RNG, rules JSON (load / save / validate) | [x] |
-| M2 | Evaluator without wilds, passes the C(52,7) distribution check | [ ] |
-| M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [ ] |
+| M2 | Evaluator without wilds, passes the C(52,7) distribution check | [x] all 133,784,560 hands match; ~47M evals/s/core on random hands |
+| M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [~] short deck, custom order, disabled types done and brute-force checked; wild-card path left |
 | M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [ ] |
 | M5 | Table state + hand analysis (current hand, outs, draws) | [ ] |
 | M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [ ] |
