@@ -1,0 +1,13 @@
+{
+  "name": "Deuces Wild",
+  "deck": { "size": 52, "jokers": 0 },
+  "wild": "deuces",
+  "hand_rankings": {
+    "order": ["high_card","pair","two_pair","three_of_a_kind","straight",
+              "flush","full_house","four_of_a_kind","straight_flush","five_of_a_kind"],
+    "wheel_straight": true
+  },
+  "blinds": { "small": 10, "big": 20, "ante": 0 },
+  "starting_stack": 2000,
+  "betting": { "structure": "no_limit", "max_raises": 4 }
+}

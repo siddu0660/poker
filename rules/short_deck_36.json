@@ -1,0 +1,13 @@
+{
+  "name": "Short Deck (6+)",
+  "deck": { "size": 36, "jokers": 0 },
+  "wild": "none",
+  "hand_rankings": {
+    "order": ["high_card","pair","two_pair","straight","three_of_a_kind",
+              "full_house","flush","four_of_a_kind","straight_flush"],
+    "wheel_straight": true
+  },
+  "blinds": { "small": 10, "big": 20, "ante": 20 },
+  "starting_stack": 2000,
+  "betting": { "structure": "no_limit", "max_raises": 4 }
+}
