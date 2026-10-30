@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **M0 (headless) and M1 done; M2 next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **M0 (headless) and M1–M4 done; M5 (table state + hand analysis) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -178,6 +178,9 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
   - Flush: the best suit with `n + k ≥ 5`, wilds filling the highest missing ranks.
   - Kickers: leftover wilds become the highest unused rank.
 - Targets: ≥ 30M evals/s/core on the no-wild path.
+- **Semantics (decided in M2)**: a 5-card hand *satisfies* every category its rank counts and suits allow (AAAKK is a full house, trips, two pair and a pair). Its value is the best enabled category it satisfies, tie-broken by that category's defining ranks and then the remaining cards high to low. A 7-card hand is worth its best 5-card subset. The tests check this definition directly with a brute-force reference.
+- **Wild-card semantics (decided in M3)**: a wild may become any rank in the deck. For rank-count types (pair through five of a kind) it may duplicate a card already held. A flush or straight flush needs five distinct cards, so wilds fill the highest missing ranks of the suit. Spare wilds play as ace kickers. Jokers that are not wild are dead cards. The wild path checks types strongest first and returns at the first one the hand can make (about 13–16M evals/s/core on deuces-wild 7-card hands, about 44% of which hold a deuce).
+- **Three paths**: *Standard* (standard order, all types on) returns at the first hit. *Monotone* (every containing type is enabled and ranks higher, e.g. short deck) takes the max over table candidates and runs at the same speed. *General* (any other custom order or disabled type) counts kickers as a multiset and runs at about 7M evals/s/core.
 
 ### 5.4 Simulator
 - **Scenario**: rules, board (0–5 cards), seats (active/folded; hole cards known or random).
@@ -190,6 +193,8 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
 - **Worker loop**: batch size ≈ `rate × 50 ms`. Sleep to hold the target runs/sec. Log one line per second (e.g. `100,000 runs completed in 12 ms`). Drop results if the epoch changed.
 - **Statistics**: 95% confidence interval `1.96·√(p(1−p)/n)`. Optional auto-pause when the hero's CI half-width falls below a target.
 - **Snapshot** for the UI: totals, runs/sec, last batch time, paused flag, epoch.
+- **Determinism (decided in M4)**: runs are grouped into fixed 256-run chunks. Chunk *i* always uses RNG stream *i* and restarts from the same pool order, and tallies are integers (a split between *m* winners scores 60/*m* units each, exact for up to 6 seats). A fixed seed therefore gives bit-identical totals for any thread count or batch sizing. Equity CIs use the exact sample variance (sum of squared per-run equity).
+- **Folded seats**: known cards of folded seats are dead (removed from the deck); folded seats get no equity.
 
 ### 5.5 Hand analysis (current hand, outs, draws)
 Powers the "Your hand now" card and the "Hands you can get" table. It lives in the core library next to the evaluator.
@@ -317,11 +322,12 @@ What to fix (visible in the screenshot):
 
 - **Unit tests**: card encoding, JSON parsing (valid, invalid, unknown keys), `sanitize()`, hand comparisons per category, kicker ordering, wheel straights in 52 and 36 card decks, ranking-order overrides, and disabled-category fall-through.
 - **Exhaustive check**: enumerate all 133,784,560 seven-card hands and compare the category counts to the known distribution (straight flush 41,584; quads 224,848; full house 3,473,184; flush 4,047,644; straight 6,180,020; trips 6,461,620; two pair 31,433,400; pair 58,627,800; high card 23,294,460). Run on demand, not on every CI build.
-- **Wild-card cross-check**: for random hands with 1–2 wilds, compare the analytic result to brute-force substitution through the non-wild evaluator.
+- **Wild-card cross-check**: random hands with 1–4 wilds under every wild mode and random rule sets are compared with a brute-force reference that tries every substitution. `pokercore_exhaustive --wild` checks all 2,598,960 deuces-wild 5-card hands against that reference and against the published deuces-wild frequencies.
 - **Hand analysis**: known boards with a known number of outs (e.g. 9 outs for a flush draw on the flop, 8 for an open-ended straight draw), made-hand descriptions for every category, and a check that "By river %" from the simulator matches exact enumeration on the turn.
 - **Simulator**: known matchups (e.g. AA vs KK preflop ≈ 81/19), a fixed-seed determinism test, and a scenario with all cards known (must give exactly 0/1/0.5 equity).
 - **Performance**: benchmark must report ≥ 30M evals/s/core in Release (`-O3`, optionally `-march=native`).
 - **UI**: manual checklist per panel, plus a run under ASan/UBSan for the core.
+- **Threads**: the `linux-tsan` preset runs the suite under ThreadSanitizer with OpenMP off (libgomp is not TSan-instrumented), which also covers the single-thread fallback.
 
 ---
 
@@ -358,13 +364,13 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 |---|---|---|
 | M0 | Skeleton: CMake + Ninja presets for all 3 OSes, empty window with dockspace | [~] headless core, presets, tests done; dockspace window waits for M6 deps |
 | M1 | Cards, RNG, rules JSON (load / save / validate) | [x] |
-| M2 | Evaluator without wilds, passes the C(52,7) distribution check | [ ] |
-| M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [ ] |
-| M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [ ] |
+| M2 | Evaluator without wilds, passes the C(52,7) distribution check | [x] all 133,784,560 hands match; ~47M evals/s/core on random hands |
+| M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [x] every 5-card deuces-wild hand matches brute force and the published frequencies |
+| M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [x] ~18M six-player runs/s on 4 cores; results bit-identical for any thread count |
 | M5 | Table state + hand analysis (current hand, outs, draws) | [ ] |
 | M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [ ] |
 | M7 | Polish: menu, drag-and-drop, CSV export, layout reset, theme switch (classic felt / flat modern), README | [ ] |
-| CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] workflow written, untested on Windows/macOS; benchmark step waits for M4 |
+| CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] workflow written incl. non-gating benchmark step; Windows/macOS jobs not yet seen running |
 
 ### Backlog (deferred, tracked only)
 | ID | Task | Status |

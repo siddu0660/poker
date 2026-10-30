@@ -11,6 +11,7 @@ option(PF_BUILD_TESTS "Build unit tests" ON)
 option(PF_NATIVE_ARCH "Compile with -march=native" OFF)
 option(PF_ENABLE_LTO "Enable LTO in Release" ON)
 option(PF_WARNINGS_AS_ERRORS "Treat warnings as errors (CI)" OFF)
+option(PF_USE_OPENMP "Parallelise simulation batches with OpenMP" ON)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
@@ -18,14 +19,18 @@ endif()
 
 include(cmake/Dependencies.cmake)
 
-find_package(OpenMP COMPONENTS CXX)
-if(NOT OpenMP_CXX_FOUND)
+if(PF_USE_OPENMP)
+  find_package(OpenMP COMPONENTS CXX)
+endif()
+if(PF_USE_OPENMP AND NOT OpenMP_CXX_FOUND)
   message(WARNING "OpenMP not found: simulation will run single-threaded")
 endif()
 
 add_library(pf_options INTERFACE)
 if(MSVC)
-  target_compile_options(pf_options INTERFACE /W4 /utf-8)
+  # C4324 "structure was padded due to alignment specifier" is the point of
+  # alignas(64) on per-thread tallies (no false sharing), so it is not a warning here.
+  target_compile_options(pf_options INTERFACE /W4 /utf-8 /wd4324)
   if(PF_WARNINGS_AS_ERRORS)
     target_compile_options(pf_options INTERFACE /WX)
   endif()
@@ -44,7 +49,10 @@ check_ipo_supported(RESULT PF_IPO_OK OUTPUT PF_IPO_MSG)
 
 add_library(pokercore STATIC
   src/core/Rules.cpp
+  src/core/Evaluator.cpp
   src/util/Log.cpp
+  src/engine/Simulator.cpp
+  src/engine/Benchmark.cpp
 )
 target_include_directories(pokercore PUBLIC src)
 target_link_libraries(pokercore PUBLIC nlohmann_json::nlohmann_json PRIVATE pf_options)

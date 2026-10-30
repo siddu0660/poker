@@ -14,6 +14,10 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" } },
+    { "name": "linux-tsan", "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "PF_USE_OPENMP": "OFF",
+        "CMAKE_CXX_FLAGS": "-fsanitize=thread" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" } },
     { "name": "macos-release", "inherits": "base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" } },
@@ -25,12 +29,14 @@
     { "name": "linux-release", "configurePreset": "linux-release" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "linux-asan", "configurePreset": "linux-asan" },
+    { "name": "linux-tsan", "configurePreset": "linux-tsan" },
     { "name": "macos-release", "configurePreset": "macos-release" },
     { "name": "windows-release", "configurePreset": "windows-release" }
   ],
   "testPresets": [
     { "name": "linux-release", "configurePreset": "linux-release", "output": { "outputOnFailure": true } },
     { "name": "linux-asan", "configurePreset": "linux-asan", "output": { "outputOnFailure": true } },
+    { "name": "linux-tsan", "configurePreset": "linux-tsan", "output": { "outputOnFailure": true } },
     { "name": "macos-release", "configurePreset": "macos-release", "output": { "outputOnFailure": true } },
     { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } }
   ]

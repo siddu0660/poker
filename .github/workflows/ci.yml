@@ -49,3 +49,9 @@ jobs:
       - name: Test
         shell: bash
         run: ctest --preset "$PRESET"
+
+      # Throughput varies across runners, so the benchmark reports but never fails the build.
+      - name: Benchmark
+        shell: bash
+        continue-on-error: true
+        run: ctest --preset "$PRESET" -C Exhaustive -R benchmark --verbose
