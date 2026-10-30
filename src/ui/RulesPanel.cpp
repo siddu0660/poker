@@ -8,6 +8,7 @@
 #include "core/Betting.hpp"
 #include "ui/DrawUtil.hpp"
 #include "ui/Panels.hpp"
+#include "util/Paths.hpp"
 
 namespace pf::ui {
 
@@ -15,11 +16,6 @@ namespace {
 
 // The deck slider moves in steps of four: 24, 28, ... 52.
 int snapDeckSize(int v) { return std::clamp(24 + ((v - 24 + 2) / 4) * 4, 24, 52); }
-
-struct ExportState {
-    char path[512] = {};
-    bool initialised = false;
-};
 
 }  // namespace
 
@@ -39,7 +35,7 @@ void drawRulesPanel(AppState& app) {
         if (ImGui::IsWindowAppearing()) app.rescanPresets();
         for (const std::string& file : app.presetFiles) {
             if (ImGui::Selectable(file.c_str(), false))
-                app.importRules((std::filesystem::path(app.rulesDir) / file).string());
+                app.importRules(pathToUtf8(pathFromUtf8(app.rulesDir) / file));
         }
         ImGui::EndCombo();
     }
@@ -135,16 +131,7 @@ void drawRulesPanel(AppState& app) {
 
     // ---- export
     ImGui::SeparatorText("Export");
-    static ExportState ex;
-    if (!ex.initialised) {
-        std::snprintf(ex.path, sizeof ex.path, "%s", (std::filesystem::path(app.rulesDir) / "my_rules.json").string().c_str());
-        ex.initialised = true;
-    }
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputText("##exportpath", ex.path, sizeof ex.path);
-    if (ImGui::Button("Export Draft Rules")) {
-        if (app.exportDraft(ex.path)) app.rescanPresets();
-    }
+    if (ImGui::Button("Export Draft Rules...")) app.dialog = Dialog::ExportRules;
     ImGui::End();
 }
 

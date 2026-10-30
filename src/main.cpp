@@ -3,10 +3,29 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 #include "ui/App.hpp"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace {
+
+// On Windows pokerforge is a GUI program with no console of its own. When it
+// is started from a terminal, print usage and errors there instead.
+void attachParentConsole() {
+#ifdef _WIN32
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE* f = nullptr;
+        freopen_s(&f, "CONOUT$", "w", stdout);
+        freopen_s(&f, "CONOUT$", "w", stderr);
+    }
+#endif
+}
 
 void usage() {
     std::puts(
@@ -20,6 +39,12 @@ void usage() {
         "  --fold A,B          fold these seats (1-based)\n"
         "  --tab N             Equity tab: 0 Equity, 1 Hands, 2 Odds, 3 Simulation\n"
         "  --seed N            fixed simulation seed\n"
+        "  --theme T           classic or flat\n"
+        "  --drop FILE         inject a file drop onto the window\n"
+        "  --press K,K         inject key presses: f1-f12, ctrl+o, ctrl+e ...\n"
+        "  --settings FILE     load and save settings here\n"
+        "  --toggle-theme-at N flip the theme on frame N\n"
+        "  --dialog D          open a dialog: import, export, csv, about, shortcuts\n"
         "  --screenshot FILE   write the last frame as a binary PPM");
 }
 
@@ -52,6 +77,7 @@ bool parseSeatList(std::string_view s, std::vector<int>& out) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    attachParentConsole();
     pf::ui::AppOptions opt;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -61,6 +87,23 @@ int main(int argc, char** argv) {
         bool ok = true;
         if (a == "--rules-dir") opt.rulesDir = std::string(value);
         else if (a == "--screenshot") opt.screenshotPath = std::string(value);
+        else if (a == "--dialog") opt.dialog = std::string(value);
+        else if (a == "--settings") opt.settingsPath = std::string(value);
+        else if (a == "--toggle-theme-at") ok = parseNumber(value, opt.toggleThemeAtFrame);
+        else if (a == "--drop") opt.dropFile = std::string(value);
+        else if (a == "--press") {
+            std::string_view rest = value;
+            while (!rest.empty()) {
+                const auto comma = rest.find(',');
+                opt.keys.emplace_back(rest.substr(0, comma));
+                if (comma == std::string_view::npos) break;
+                rest.remove_prefix(comma + 1);
+            }
+        }
+        else if (a == "--theme") {
+            ok = value == "classic" || value == "flat";
+            opt.theme = value == "flat" ? 1 : 0;
+        }
         else if (a == "--frames") ok = parseNumber(value, opt.maxFrames);
         else if (a == "--advance") ok = parseNumber(value, opt.advanceStreets);
         else if (a == "--players") ok = parseNumber(value, opt.players);

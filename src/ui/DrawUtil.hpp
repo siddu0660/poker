@@ -4,6 +4,7 @@
 #include "imgui.h"
 
 #include "core/Cards.hpp"
+#include "ui/Settings.hpp"
 
 namespace pf::ui {
 
@@ -21,14 +22,21 @@ struct Palette {
     static constexpr ImU32 Split = IM_COL32(230, 168, 52, 255);
     static constexpr ImU32 Lose = IM_COL32(226, 84, 84, 255);
     static constexpr ImU32 Muted = IM_COL32(150, 154, 162, 255);
-    static constexpr ImU32 Felt = IM_COL32(24, 92, 62, 255);
-    static constexpr ImU32 FeltDark = IM_COL32(16, 66, 44, 255);
-    static constexpr ImU32 Rail = IM_COL32(86, 54, 32, 255);
-    static constexpr ImU32 RailLight = IM_COL32(120, 80, 50, 255);
     static constexpr ImU32 CardFace = IM_COL32(250, 248, 240, 255);
     static constexpr ImU32 CardBack = IM_COL32(42, 70, 140, 255);
     static constexpr ImU32 Gold = IM_COL32(244, 204, 90, 255);
 };
+
+// The parts of the table that change with the theme.
+struct ThemeColors {
+    ImU32 felt;       // the playing surface
+    ImU32 feltEdge;   // its outline
+    ImU32 rail;       // the rim around it
+    ImU32 railEdge;
+    ImU32 innerLine;  // the thin ring on the felt
+    ImVec4 clear;     // the window background behind the panels
+};
+const ThemeColors& themeColors(Theme theme);
 
 // One colour per player for charts and seat accents.
 ImU32 seatColor(int seat);

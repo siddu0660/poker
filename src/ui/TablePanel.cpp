@@ -234,9 +234,10 @@ void drawTablePanel(AppState& app) {
     const Geometry g = layout(origin, avail);
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    drawEllipse(dl, g.center, g.feltRx + 9.0f, g.feltRy + 9.0f, Palette::Rail, Palette::RailLight, 2.0f);
-    drawEllipse(dl, g.center, g.feltRx, g.feltRy, Palette::Felt, Palette::FeltDark, 3.0f);
-    drawEllipse(dl, g.center, g.feltRx * 0.82f, g.feltRy * 0.78f, 0, IM_COL32(255, 255, 255, 28), 1.5f);
+    const ThemeColors& tc = themeColors(app.theme);
+    drawEllipse(dl, g.center, g.feltRx + 9.0f, g.feltRy + 9.0f, tc.rail, tc.railEdge, 2.0f);
+    drawEllipse(dl, g.center, g.feltRx, g.feltRy, tc.felt, tc.feltEdge, 3.0f);
+    drawEllipse(dl, g.center, g.feltRx * 0.82f, g.feltRy * 0.78f, 0, tc.innerLine, 1.5f);
 
     drawCommunity(dl, app, g);
 

@@ -2,6 +2,8 @@
 #include "ui/App.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +21,7 @@
 #include "ui/AppState.hpp"
 #include "ui/DrawUtil.hpp"
 #include "ui/Panels.hpp"
+#include "util/Paths.hpp"
 
 namespace pf::ui {
 
@@ -68,12 +71,12 @@ std::string executableDir() {
 
 std::string findRulesDir(const std::string& requested) {
     if (!requested.empty()) return requested;
-    const fs::path beside = fs::path(executableDir()) / "rules";
-    if (fs::exists(beside)) return beside.string();
+    const fs::path beside = pathFromUtf8(executableDir()) / "rules";
+    if (fs::exists(beside)) return pathToUtf8(beside);
 #ifdef PF_SOURCE_RULES_DIR
-    if (fs::exists(PF_SOURCE_RULES_DIR)) return PF_SOURCE_RULES_DIR;
+    if (fs::exists(pathFromUtf8(PF_SOURCE_RULES_DIR))) return PF_SOURCE_RULES_DIR;
 #endif
-    return beside.string();
+    return pathToUtf8(beside);
 }
 
 // Left column: Settings over Rules. Centre: Table over Console. Right: Equity.
@@ -98,26 +101,65 @@ void buildDefaultLayout(ImGuiID dock, ImVec2 size) {
     ImGui::DockBuilderFinish(dock);
 }
 
-void applyStyle(float dpi) {
-    ImGui::StyleColorsDark();
+// Both themes start from the same base; only colours and corner rounding differ.
+void applyTheme(Theme theme, float dpi) {
     ImGuiStyle& st = ImGui::GetStyle();
-    st.WindowRounding = 4.0f;
-    st.FrameRounding = 4.0f;
-    st.GrabRounding = 4.0f;
-    st.TabRounding = 4.0f;
+    st = ImGuiStyle();  // forget the previous theme (and the previous DPI scaling)
+    ImGui::StyleColorsDark();
     st.FramePadding = {6.0f, 4.0f};
     st.ItemSpacing = {8.0f, 6.0f};
-    st.Colors[ImGuiCol_WindowBg] = ImVec4{0.09f, 0.10f, 0.12f, 1.0f};
-    st.Colors[ImGuiCol_TitleBgActive] = ImVec4{0.16f, 0.22f, 0.30f, 1.0f};
-    st.Colors[ImGuiCol_Tab] = ImVec4{0.14f, 0.17f, 0.22f, 1.0f};
-    st.Colors[ImGuiCol_TabSelected] = ImVec4{0.22f, 0.36f, 0.52f, 1.0f};
+    auto set = [&](ImGuiCol c, float r, float g, float b) { st.Colors[c] = ImVec4{r, g, b, 1.0f}; };
+
+    if (theme == Theme::FlatModern) {
+        st.WindowRounding = st.FrameRounding = st.GrabRounding = st.TabRounding = st.PopupRounding = 2.0f;
+        st.WindowBorderSize = st.FrameBorderSize = 1.0f;
+        set(ImGuiCol_WindowBg, 0.10f, 0.11f, 0.13f);
+        set(ImGuiCol_PopupBg, 0.12f, 0.13f, 0.16f);
+        set(ImGuiCol_Border, 0.20f, 0.23f, 0.28f);
+        set(ImGuiCol_FrameBg, 0.15f, 0.17f, 0.21f);
+        set(ImGuiCol_FrameBgHovered, 0.19f, 0.22f, 0.27f);
+        set(ImGuiCol_FrameBgActive, 0.22f, 0.26f, 0.32f);
+        set(ImGuiCol_TitleBg, 0.08f, 0.09f, 0.11f);
+        set(ImGuiCol_TitleBgActive, 0.12f, 0.14f, 0.17f);
+        set(ImGuiCol_Button, 0.15f, 0.55f, 0.50f);
+        set(ImGuiCol_ButtonHovered, 0.18f, 0.66f, 0.60f);
+        set(ImGuiCol_ButtonActive, 0.12f, 0.45f, 0.41f);
+        set(ImGuiCol_Header, 0.15f, 0.40f, 0.38f);
+        set(ImGuiCol_HeaderHovered, 0.18f, 0.50f, 0.46f);
+        set(ImGuiCol_HeaderActive, 0.15f, 0.55f, 0.50f);
+        set(ImGuiCol_SliderGrab, 0.20f, 0.72f, 0.65f);
+        set(ImGuiCol_SliderGrabActive, 0.30f, 0.82f, 0.75f);
+        set(ImGuiCol_CheckMark, 0.30f, 0.85f, 0.78f);
+        set(ImGuiCol_Tab, 0.12f, 0.14f, 0.17f);
+        set(ImGuiCol_TabHovered, 0.18f, 0.50f, 0.46f);
+        set(ImGuiCol_TabSelected, 0.15f, 0.55f, 0.50f);
+        set(ImGuiCol_TabDimmed, 0.10f, 0.11f, 0.14f);
+        set(ImGuiCol_TabDimmedSelected, 0.13f, 0.30f, 0.30f);
+    } else {
+        st.WindowRounding = st.FrameRounding = st.GrabRounding = st.TabRounding = 4.0f;
+        set(ImGuiCol_WindowBg, 0.09f, 0.10f, 0.12f);
+        set(ImGuiCol_TitleBgActive, 0.16f, 0.22f, 0.30f);
+        set(ImGuiCol_Tab, 0.14f, 0.17f, 0.22f);
+        set(ImGuiCol_TabSelected, 0.22f, 0.36f, 0.52f);
+    }
     st.ScaleAllSizes(dpi);
 }
 
 void drawMenuBar(AppState& app) {
     if (!ImGui::BeginMainMenuBar()) return;
     if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Import Rules...", "Ctrl+O")) app.dialog = Dialog::ImportRules;
+        if (ImGui::MenuItem("Export Rules...", "Ctrl+S")) app.dialog = Dialog::ExportRules;
+        if (ImGui::MenuItem("Export Equity CSV...", "Ctrl+E")) app.dialog = Dialog::ExportCsv;
+        ImGui::Separator();
         if (ImGui::MenuItem("Quit", "Alt+F4")) app.quitRequested = true;
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Game")) {
+        if (ImGui::MenuItem("New Hand", "F2")) app.newHand();
+        if (ImGui::MenuItem("Next Street", "F3", false, app.table.street() != Street::River)) app.nextStreet();
+        if (ImGui::MenuItem(app.paused ? "Resume Simulation" : "Pause Simulation", "F4")) app.setPaused(!app.paused);
+        if (ImGui::MenuItem("Restart Simulation", "F5")) app.restart();
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
@@ -127,10 +169,65 @@ void drawMenuBar(AppState& app) {
         ImGui::MenuItem(PanelTitles::Equity, nullptr, &app.visible.equity);
         ImGui::MenuItem(PanelTitles::Console, nullptr, &app.visible.console);
         ImGui::Separator();
+        if (ImGui::BeginMenu("Theme")) {
+            for (Theme t : {Theme::ClassicFelt, Theme::FlatModern})
+                if (ImGui::MenuItem(std::string(themeDisplay(t)).c_str(), nullptr, app.theme == t)) app.theme = t;
+            ImGui::EndMenu();
+        }
         if (ImGui::MenuItem("Reset Layout")) app.layoutResetRequested = true;
         ImGui::EndMenu();
     }
+    if (ImGui::BeginMenu("Help")) {
+        if (ImGui::MenuItem("Keyboard Shortcuts", "F1")) app.dialog = Dialog::Shortcuts;
+        if (ImGui::MenuItem("About PokerForge")) app.dialog = Dialog::About;
+        ImGui::EndMenu();
+    }
     ImGui::EndMainMenuBar();
+}
+
+// Function keys and Ctrl chords, so they never collide with typing in a text box.
+void handleShortcuts(AppState& app) {
+    if (app.dialog != Dialog::None) return;
+    const ImGuiIO& io = ImGui::GetIO();
+    auto pressed = [](ImGuiKey k) { return ImGui::IsKeyPressed(k, false); };
+    if (pressed(ImGuiKey_F1)) app.dialog = Dialog::Shortcuts;
+    if (pressed(ImGuiKey_F2)) app.newHand();
+    if (pressed(ImGuiKey_F3) && app.table.street() != Street::River) app.nextStreet();
+    if (pressed(ImGuiKey_F4)) app.setPaused(!app.paused);
+    if (pressed(ImGuiKey_F5)) app.restart();
+    if (io.KeyCtrl && pressed(ImGuiKey_O)) app.dialog = Dialog::ImportRules;
+    if (io.KeyCtrl && pressed(ImGuiKey_S)) app.dialog = Dialog::ExportRules;
+    if (io.KeyCtrl && pressed(ImGuiKey_E)) app.dialog = Dialog::ExportCsv;
+}
+
+// Turns "f3" or "ctrl+e" into the SDL key event a keyboard would send.
+bool pushKeyEvent(SDL_Window* window, const std::string& name, bool down) {
+    SDL_Keycode key = SDLK_UNKNOWN;
+    Uint16 mod = KMOD_NONE;
+    std::string k = name;
+    if (k.rfind("ctrl+", 0) == 0) { mod = KMOD_LCTRL; k = k.substr(5); }
+    if (k.size() >= 2 && k[0] == 'f' && std::isdigit(static_cast<unsigned char>(k[1])))
+        key = SDLK_F1 + (std::atoi(k.c_str() + 1) - 1);
+    else if (k.size() == 1 && k[0] >= 'a' && k[0] <= 'z')
+        key = static_cast<SDL_Keycode>(k[0]);
+    if (key == SDLK_UNKNOWN) return false;
+    SDL_Event e{};
+    e.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+    e.key.state = down ? SDL_PRESSED : SDL_RELEASED;
+    e.key.keysym.sym = key;
+    e.key.keysym.scancode = SDL_GetScancodeFromKey(key);
+    e.key.keysym.mod = mod;
+    e.key.windowID = SDL_GetWindowID(window);  // ImGui drops events addressed to another window
+    return SDL_PushEvent(&e) == 1;
+}
+
+Dialog dialogFromName(const std::string& name) {
+    if (name == "import") return Dialog::ImportRules;
+    if (name == "export") return Dialog::ExportRules;
+    if (name == "csv") return Dialog::ExportCsv;
+    if (name == "about") return Dialog::About;
+    if (name == "shortcuts") return Dialog::Shortcuts;
+    return Dialog::None;
 }
 
 bool savePpm(const std::string& path, int w, int h) {
@@ -198,13 +295,13 @@ int runApp(const AppOptions& opt) {
     // Layout and window positions persist in the user's pref folder.
     static std::string iniPath;
     if (char* pref = SDL_GetPrefPath("PokerForge", "PokerForge")) {
-        iniPath = (fs::path(pref) / "imgui.ini").string();
+        iniPath = pathToUtf8(pathFromUtf8(pref) / "imgui.ini");  // ImGui opens it as UTF-8
         SDL_free(pref);
         io.IniFilename = iniPath.c_str();
     } else {
         io.IniFilename = nullptr;
     }
-    const bool haveSavedLayout = !iniPath.empty() && fs::exists(iniPath) && opt.maxFrames == 0;
+    const bool haveSavedLayout = !iniPath.empty() && fs::exists(pathFromUtf8(iniPath)) && opt.maxFrames == 0;
     if (opt.maxFrames > 0) io.IniFilename = nullptr;  // scripted runs never touch the user's layout
 
     const Scale scale = measureScale(win.window);
@@ -212,13 +309,28 @@ int runApp(const AppOptions& opt) {
     fontCfg.SizePixels = 14.0f * scale.dpi * scale.pixelRatio;
     io.Fonts->AddFontDefault(&fontCfg);
     io.FontGlobalScale = 1.0f / scale.pixelRatio;
-    applyStyle(scale.dpi);
 
     ImGui_ImplSDL2_InitForOpenGL(win.window, win.gl);
     ImGui_ImplOpenGL3_Init(glsl);
 
     {
         AppState app(findRulesDir(opt.rulesDir));
+
+        // Settings persist in the user's pref folder; scripted runs neither read nor write them.
+        std::string settingsPath;
+        if (char* pref = SDL_GetPrefPath("PokerForge", "PokerForge")) {
+            if (opt.maxFrames == 0) settingsPath = pathToUtf8(pathFromUtf8(pref) / "settings.json");
+            app.exportDir = pathToUtf8(pathFromUtf8(pref) / "exports");
+            SDL_free(pref);
+        }
+        if (!opt.settingsPath.empty()) settingsPath = opt.settingsPath;
+        if (!settingsPath.empty()) {
+            std::vector<std::string> warnings;
+            app.applySettings(loadSettings(settingsPath, &warnings));
+            for (const std::string& w : warnings) logWarn("[Engine] " + w);
+        }
+        if (opt.theme >= 0) app.theme = opt.theme == 1 ? Theme::FlatModern : Theme::ClassicFelt;
+        app.dialog = dialogFromName(opt.dialog);
         app.forceTab = opt.tab;
         if (opt.fixedSeed) app.setSeed(true, opt.seed);
         if (opt.players > 0) app.setSeatCount(opt.players);
@@ -226,6 +338,8 @@ int runApp(const AppOptions& opt) {
             if (seat >= 1 && seat <= app.table.seatCount()) app.toggleFold(seat - 1);
         if (opt.fixedSeed || opt.players > 0) app.restart();
         app.layoutResetRequested = !haveSavedLayout;
+        Theme appliedTheme = app.theme;
+        applyTheme(appliedTheme, scale.dpi);
 
         const ImGuiID dockId = ImHashStr(kDockName);
         bool running = true;
@@ -234,21 +348,48 @@ int runApp(const AppOptions& opt) {
             while (SDL_PollEvent(&e)) {
                 ImGui_ImplSDL2_ProcessEvent(&e);
                 if (e.type == SDL_QUIT) running = false;
+                if (e.type == SDL_DROPFILE && e.drop.file) {
+                    app.handleDroppedFile(e.drop.file);
+                    SDL_free(e.drop.file);
+                }
                 if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE &&
                     e.window.windowID == SDL_GetWindowID(win.window))
                     running = false;
             }
             if (app.quitRequested) running = false;
 
+            // Scripted input goes through the same SDL event queue a user's would.
+            if (!opt.dropFile.empty() && frame == 5) {
+                SDL_Event drop{};
+                drop.type = SDL_DROPFILE;
+                drop.drop.file = SDL_strdup(opt.dropFile.c_str());
+                SDL_PushEvent(&drop);
+            }
+            for (std::size_t k = 0; k < opt.keys.size(); ++k) {
+                const int start = 10 + 6 * static_cast<int>(k);
+                if (frame == start && !pushKeyEvent(win.window, opt.keys[k], true))
+                    std::fprintf(stderr, "unknown key \"%s\"\n", opt.keys[k].c_str());
+                if (frame == start + 2) pushKeyEvent(win.window, opt.keys[k], false);
+            }
+
             // Scripted runs press Next Street at fixed frame counts.
             if (opt.advanceStreets > 0 && frame > 0 && frame % 30 == 0 && frame / 30 <= opt.advanceStreets)
                 app.nextStreet();
+
+            if (opt.toggleThemeAtFrame > 0 && frame == opt.toggleThemeAtFrame)
+                app.theme = app.theme == Theme::ClassicFelt ? Theme::FlatModern : Theme::ClassicFelt;
+            if (app.theme != appliedTheme) {  // restyle between frames, never in the middle of one
+                appliedTheme = app.theme;
+                applyTheme(appliedTheme, scale.dpi);
+                if (!settingsPath.empty()) saveSettings(app.currentSettings(), settingsPath);
+            }
 
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame();
 
             app.frame();
+            handleShortcuts(app);
             drawMenuBar(app);
             ImGui::DockSpaceOverViewport(dockId, ImGui::GetMainViewport());
             if (app.layoutResetRequested) {
@@ -261,12 +402,14 @@ int runApp(const AppOptions& opt) {
             drawTablePanel(app);
             drawEquityPanel(app);
             drawConsolePanel(app);
+            drawDialogs(app);
 
             ImGui::Render();
             int dw = 0, dh = 0;
             SDL_GL_GetDrawableSize(win.window, &dw, &dh);
             glViewport(0, 0, dw, dh);
-            glClearColor(0.07f, 0.08f, 0.10f, 1.0f);
+            const ImVec4 clear = themeColors(app.theme).clear;
+            glClearColor(clear.x, clear.y, clear.z, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -276,6 +419,10 @@ int runApp(const AppOptions& opt) {
             SDL_GL_SwapWindow(win.window);
             if (last) running = false;
             if (opt.maxFrames > 0) SDL_Delay(8);  // let the simulation thread make progress between frames
+        }
+        if (!settingsPath.empty()) {
+            std::string err;
+            if (!saveSettings(app.currentSettings(), settingsPath, &err)) std::fprintf(stderr, "%s\n", err.c_str());
         }
     }  // AppState (and its worker thread) goes away before the GL context
 

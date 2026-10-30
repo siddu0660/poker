@@ -1,6 +1,9 @@
 #include "test_main.hpp"
 #include "ui/AppState.hpp"
+#include "ui/Export.hpp"
+#include "util/Paths.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +30,12 @@ bool pump(AppState& app, std::uint64_t minRuns, double seconds = 20) {
 }
 
 AppState makeApp() { return AppState(PF_RULES_DIR); }
+
+// Test clean-up must never fail a test, so use the overload that reports instead of throwing.
+void removeQuietly(const std::filesystem::path& p) {
+    std::error_code ec;
+    std::filesystem::remove_all(p, ec);
+}
 
 }  // namespace
 
@@ -129,12 +138,12 @@ PF_TEST(app_import_and_export_rules) {
     AppState other = makeApp();
     CHECK(other.importRules(out.string()));
     CHECK(other.draft == app.draft);
-    std::filesystem::remove(out);
+    removeQuietly(out);
 
     const auto bad = std::filesystem::temp_directory_path() / "pokerforge_test_bad.json";
     { std::ofstream(bad) << "{ not json"; }
     CHECK(!other.importRules(bad.string()));
-    std::filesystem::remove(bad);
+    removeQuietly(bad);
 }
 
 PF_TEST(app_table_changes_restart_the_simulation) {
@@ -235,4 +244,174 @@ PF_TEST(app_benchmark_runs_and_restores_pause) {
     CHECK(app.lastBenchmark.evalsPerSecSingle > 0);
     CHECK(!app.lastBenchmark.scaling.empty());
     CHECK(app.paused);  // the state from before the benchmark is back
+}
+
+PF_TEST(app_equity_csv_export) {
+    AppState app = makeApp();
+    app.setSeatCount(3);
+    app.toggleFold(2);
+    CHECK(pump(app, 1000));
+    app.nextStreet();  // files the preflop equity
+    CHECK(pump(app, 1000));
+
+    const std::string csv = equityCsv(app.table);
+    CHECK(csv.rfind("hand,street,Player 1,Player 2,Player 3\n", 0) == 0);
+    CHECK(csv.find(",Preflop,") != std::string::npos);
+    CHECK(csv.find(",Flop,") != std::string::npos);
+    // One header and one row per street; the folded seat's cell is empty.
+    std::size_t lines = 0;
+    for (char c : csv) lines += c == '\n';
+    CHECK_EQ(lines, 1 + app.table.equityHistory().size());
+    CHECK(csv.find("Preflop,") != std::string::npos);
+    const auto row = csv.substr(csv.find("Preflop"));
+    CHECK(row.substr(0, row.find('\n')).back() == ',');  // trailing empty cell for Player 3
+    // Equities in a row add up to 100.
+    double sum = 0;
+    std::size_t pos = row.find(',');
+    for (int cell = 0; cell < 2; ++cell) {
+        sum += std::stod(row.substr(pos + 1));
+        pos = row.find(',', pos + 1);
+    }
+    CHECK(std::abs(sum - 100.0) < 0.001);
+
+    const auto path = std::filesystem::temp_directory_path() / "pokerforge_test_csv" / "equity.csv";
+    CHECK(app.exportEquityCsv(path.string()));
+    {
+        std::ifstream in(path);  // closed before cleanup: Windows cannot delete an open file
+        std::string firstLine;
+        std::getline(in, firstLine);
+        CHECK_EQ(firstLine, std::string("hand,street,Player 1,Player 2,Player 3"));
+    }
+    removeQuietly(path.parent_path());
+
+    AppState empty = makeApp();
+    empty.newHand();  // history is cleared
+    CHECK(!empty.exportEquityCsv((std::filesystem::temp_directory_path() / "should_not_exist.csv").string()));
+    CHECK(!std::filesystem::exists(std::filesystem::temp_directory_path() / "should_not_exist.csv"));
+}
+
+PF_TEST(app_csv_cells_are_escaped) {
+    CHECK_EQ(csvCell("Player 1"), std::string("Player 1"));
+    CHECK_EQ(csvCell("Smith, John"), std::string("\"Smith, John\""));
+    CHECK_EQ(csvCell("say \"hi\""), std::string("\"say \"\"hi\"\"\""));
+    CHECK_EQ(csvCell("two\nlines"), std::string("\"two\nlines\""));
+}
+
+PF_TEST(app_dropped_files) {
+    AppState app = makeApp();
+    CHECK(!app.handleDroppedFile((std::filesystem::path(PF_RULES_DIR) / "texas_holdem.txt").string()));
+    CHECK(!app.draftDirty());
+    app.visible.rules = false;
+    CHECK(app.handleDroppedFile(std::string(PF_RULES_DIR) + "/short_deck_36.json"));
+    CHECK_EQ(app.draft.deckSize, 36);
+    CHECK(app.visible.rules);
+    CHECK(app.draftDirty());  // imported into the draft, not applied
+    CHECK(!app.handleDroppedFile(std::string(PF_RULES_DIR) + "/missing.json"));
+
+    const auto upper = std::filesystem::temp_directory_path() / "DROPPED.JSON";
+    CHECK(app.exportDraft(upper.string()));
+    AppState other = makeApp();
+    CHECK(other.handleDroppedFile(upper.string()));  // the extension check ignores case
+    removeQuietly(upper);
+}
+
+PF_TEST(app_default_export_paths) {
+    AppState app = makeApp();
+    app.draft.name = "Short Deck (6+)";
+    CHECK(std::filesystem::path(app.defaultRulesExportPath()).filename() == "short_deck_6.json");
+    app.draft.name = "!!!";
+    CHECK(std::filesystem::path(app.defaultRulesExportPath()).filename() == "rules.json");
+    CHECK(std::filesystem::path(app.defaultCsvPath()).filename().string().rfind("equity_hand_", 0) == 0);
+    app.exportDir = "somewhere";
+    CHECK(std::filesystem::path(app.defaultCsvPath()).parent_path() == "somewhere");
+}
+
+PF_TEST(settings_round_trip_and_defaults) {
+    UserSettings s;
+    s.theme = Theme::FlatModern;
+    s.runsPerSec = 250000;
+    s.unlimited = true;
+    s.threads = 3;
+    s.fixedSeed = true;
+    s.seed = 18446744073709551615ull;
+    s.autoStopPercent = 0.5;
+    CHECK(settingsFromJson(settingsToJson(s)) == s);
+    CHECK(settingsFromJson("{}") == UserSettings{});
+
+    std::vector<std::string> warnings;
+    CHECK(settingsFromJson("not json", &warnings) == UserSettings{});
+    CHECK(!warnings.empty());
+    CHECK(loadSettings("/definitely/not/a/real/path.json") == UserSettings{});  // first run
+}
+
+PF_TEST(settings_bad_values_are_clamped_or_ignored) {
+    std::vector<std::string> warnings;
+    const auto s = settingsFromJson(R"({"theme":"neon","speed":{"runs_per_sec":5,"unlimited":"yes"},
+                                        "threads":-4,"seed":{"fixed":true,"value":-1},"auto_stop_percent":99})",
+                                    &warnings);
+    CHECK(s.theme == Theme::ClassicFelt);
+    CHECK_EQ(s.runsPerSec, 1000.0);        // clamped to the slider's range
+    CHECK(!s.unlimited);                   // wrong type: default kept
+    CHECK_EQ(s.threads, 0);
+    CHECK(s.fixedSeed);
+    CHECK_EQ(s.seed, 12345u);              // negative seed ignored
+    CHECK_EQ(s.autoStopPercent, 5.0);
+    CHECK(warnings.size() >= 3);
+}
+
+PF_TEST(settings_save_load_and_apply_to_the_app) {
+    const auto path = std::filesystem::temp_directory_path() / "pokerforge_test_settings" / "settings.json";
+    UserSettings s;
+    s.theme = Theme::FlatModern;
+    s.runsPerSec = 40000;
+    s.fixedSeed = true;
+    s.seed = 99;
+    s.threads = 2;
+    CHECK(saveSettings(s, path.string()));
+    CHECK(loadSettings(path.string()) == s);
+
+    AppState app = makeApp();
+    app.applySettings(loadSettings(path.string()));
+    CHECK(app.currentSettings() == s);
+    CHECK(app.theme == Theme::FlatModern);
+    CHECK_EQ(app.targetRate, 40000.0);
+    CHECK(app.fixedSeed);
+    removeQuietly(path.parent_path());
+}
+
+// Every file path goes through UTF-8. On Windows the old narrow conversions used
+// the ANSI code page and threw on characters like these; elsewhere this guards the round trip.
+PF_TEST(app_paths_with_non_ascii_folders) {
+    const std::string dirUtf8 = pathToUtf8(std::filesystem::temp_directory_path() / "pokerforge_\xE6\xB5\x8B\xE8\xAF\x95_\xCE\xA9");
+    const auto dir = pathFromUtf8(dirUtf8);
+    CHECK(pathToUtf8(dir) == dirUtf8);
+    removeQuietly(dir);
+    std::filesystem::create_directories(dir);
+    for (const char* f : {"texas_holdem.json", "short_deck_36.json"})
+        std::filesystem::copy_file(pathFromUtf8(std::string(PF_RULES_DIR) + "/" + f), dir / f);
+
+    AppState app(dirUtf8);
+    CHECK_EQ(app.applied.name, std::string("Texas Hold'em"));  // loaded from the non-ASCII folder
+    CHECK(std::find(app.presetFiles.begin(), app.presetFiles.end(), "short_deck_36.json") != app.presetFiles.end());
+    CHECK(app.importRules(pathToUtf8(dir / "short_deck_36.json")));
+    CHECK_EQ(app.draft.deckSize, 36);
+    CHECK(app.handleDroppedFile(pathToUtf8(dir / "texas_holdem.json")));
+
+    app.draft.name = "My rules";
+    const std::string rulesOut = app.defaultRulesExportPath();
+    CHECK(rulesOut.rfind(dirUtf8, 0) == 0);  // still under the same folder, byte for byte
+    CHECK(app.exportDraft(rulesOut));
+    CHECK(std::filesystem::exists(pathFromUtf8(rulesOut)));
+
+    app.exportDir = pathToUtf8(dir / "exports");
+    CHECK(pump(app, 500));
+    const std::string csvOut = app.defaultCsvPath();
+    CHECK(app.exportEquityCsv(csvOut));
+    CHECK(std::filesystem::exists(pathFromUtf8(csvOut)));
+
+    UserSettings s;
+    s.theme = Theme::FlatModern;
+    CHECK(saveSettings(s, pathToUtf8(dir / "settings.json")));
+    CHECK(loadSettings(pathToUtf8(dir / "settings.json")) == s);
+    removeQuietly(dir);
 }

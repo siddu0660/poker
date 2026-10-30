@@ -131,6 +131,7 @@ void drawEquityTab(AppState& app) {
     const float h = std::max(ImGui::GetFontSize() * 11.0f, ImGui::GetContentRegionAvail().y * 0.45f);
     ImGui::Spacing();
     drawEquityChart(app, h);
+    if (ImGui::Button("Export Equity CSV...")) app.dialog = Dialog::ExportCsv;
     drawHandCard(app);
 }
 
