@@ -2,6 +2,7 @@
 //   pokercore_exhaustive          all C(52,7) hands vs the known category counts
 //   pokercore_exhaustive --bench  single-thread throughput on random 7-card hands
 //   pokercore_exhaustive --wild   every 5-card deuces-wild hand vs brute force
+//   pokercore_exhaustive --sim    simulation thread scaling (engine Benchmark)
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -11,6 +12,7 @@
 
 #include "core/Evaluator.hpp"
 #include "core/Rng.hpp"
+#include "engine/Benchmark.hpp"
 #include "RefEvaluator.hpp"
 
 using namespace pf;
@@ -150,10 +152,21 @@ int wildExhaustive() {
     return ok ? 0 : 1;
 }
 
+int simBench() {
+    const BenchmarkResult b = runBenchmark(RuleSet{}, 1.0);
+    std::printf("evaluator: %.1f M evals/s/core\n", b.evalsPerSecSingle / 1e6);
+    for (const ScalingPoint& p : b.scaling)
+        std::printf("%2d threads: %6.2f M runs/s  %6.1f M evals/s  (%.2fx)\n", p.threads, p.runsPerSec / 1e6,
+                    p.evalsPerSec / 1e6, p.runsPerSec / b.scaling.front().runsPerSec);
+    std::printf("%s\n", b.summary.c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--bench") == 0) return bench();
     if (argc > 1 && std::strcmp(argv[1], "--wild") == 0) return wildExhaustive();
+    if (argc > 1 && std::strcmp(argv[1], "--sim") == 0) return simBench();
     return exhaustive();
 }

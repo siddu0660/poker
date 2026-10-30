@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **M0 (headless), M1, M2 and M3 done; M4 (simulator) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **M0 (headless) and M1–M4 done; M5 (table state + hand analysis) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -193,6 +193,8 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
 - **Worker loop**: batch size ≈ `rate × 50 ms`. Sleep to hold the target runs/sec. Log one line per second (e.g. `100,000 runs completed in 12 ms`). Drop results if the epoch changed.
 - **Statistics**: 95% confidence interval `1.96·√(p(1−p)/n)`. Optional auto-pause when the hero's CI half-width falls below a target.
 - **Snapshot** for the UI: totals, runs/sec, last batch time, paused flag, epoch.
+- **Determinism (decided in M4)**: runs are grouped into fixed 256-run chunks. Chunk *i* always uses RNG stream *i* and restarts from the same pool order, and tallies are integers (a split between *m* winners scores 60/*m* units each, exact for up to 6 seats). A fixed seed therefore gives bit-identical totals for any thread count or batch sizing. Equity CIs use the exact sample variance (sum of squared per-run equity).
+- **Folded seats**: known cards of folded seats are dead (removed from the deck); folded seats get no equity.
 
 ### 5.5 Hand analysis (current hand, outs, draws)
 Powers the "Your hand now" card and the "Hands you can get" table. It lives in the core library next to the evaluator.
@@ -325,6 +327,7 @@ What to fix (visible in the screenshot):
 - **Simulator**: known matchups (e.g. AA vs KK preflop ≈ 81/19), a fixed-seed determinism test, and a scenario with all cards known (must give exactly 0/1/0.5 equity).
 - **Performance**: benchmark must report ≥ 30M evals/s/core in Release (`-O3`, optionally `-march=native`).
 - **UI**: manual checklist per panel, plus a run under ASan/UBSan for the core.
+- **Threads**: the `linux-tsan` preset runs the suite under ThreadSanitizer with OpenMP off (libgomp is not TSan-instrumented), which also covers the single-thread fallback.
 
 ---
 
@@ -363,11 +366,11 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 | M1 | Cards, RNG, rules JSON (load / save / validate) | [x] |
 | M2 | Evaluator without wilds, passes the C(52,7) distribution check | [x] all 133,784,560 hands match; ~47M evals/s/core on random hands |
 | M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [x] every 5-card deuces-wild hand matches brute force and the published frequencies |
-| M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [ ] |
+| M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [x] ~18M six-player runs/s on 4 cores; results bit-identical for any thread count |
 | M5 | Table state + hand analysis (current hand, outs, draws) | [ ] |
 | M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [ ] |
 | M7 | Polish: menu, drag-and-drop, CSV export, layout reset, theme switch (classic felt / flat modern), README | [ ] |
-| CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] workflow written, untested on Windows/macOS; benchmark step waits for M4 |
+| CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] workflow written incl. non-gating benchmark step; Windows/macOS jobs not yet seen running |
 
 ### Backlog (deferred, tracked only)
 | ID | Task | Status |

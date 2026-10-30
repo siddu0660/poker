@@ -11,6 +11,7 @@ option(PF_BUILD_TESTS "Build unit tests" ON)
 option(PF_NATIVE_ARCH "Compile with -march=native" OFF)
 option(PF_ENABLE_LTO "Enable LTO in Release" ON)
 option(PF_WARNINGS_AS_ERRORS "Treat warnings as errors (CI)" OFF)
+option(PF_USE_OPENMP "Parallelise simulation batches with OpenMP" ON)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
@@ -18,8 +19,10 @@ endif()
 
 include(cmake/Dependencies.cmake)
 
-find_package(OpenMP COMPONENTS CXX)
-if(NOT OpenMP_CXX_FOUND)
+if(PF_USE_OPENMP)
+  find_package(OpenMP COMPONENTS CXX)
+endif()
+if(PF_USE_OPENMP AND NOT OpenMP_CXX_FOUND)
   message(WARNING "OpenMP not found: simulation will run single-threaded")
 endif()
 
@@ -46,6 +49,8 @@ add_library(pokercore STATIC
   src/core/Rules.cpp
   src/core/Evaluator.cpp
   src/util/Log.cpp
+  src/engine/Simulator.cpp
+  src/engine/Benchmark.cpp
 )
 target_include_directories(pokercore PUBLIC src)
 target_link_libraries(pokercore PUBLIC nlohmann_json::nlohmann_json PRIVATE pf_options)
