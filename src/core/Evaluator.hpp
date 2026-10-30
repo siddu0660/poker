@@ -24,8 +24,10 @@ constexpr std::uint32_t scoreTiebreak(HandScore s) noexcept { return s & 0xFFFFF
 // defining ranks followed by the remaining cards, highest first. A larger hand
 // is worth its best 5-card subset. Disabled categories therefore fall through.
 //
-// Wild cards are evaluated in milestone M3; until then wild cards count as
-// ordinary cards and jokers are ignored.
+// Wild cards: a wild may become any rank in the deck. For rank-count types
+// (pairs through five of a kind) it may duplicate a card already held. In a
+// flush or straight flush the cards must be distinct, so wilds fill the highest
+// missing ranks of the suit. Jokers that are not wild are dead cards.
 class Evaluator {
 public:
     explicit Evaluator(const RuleSet& rules);
@@ -33,6 +35,9 @@ public:
     HandScore evaluate(CardMask cards) const noexcept;
 
     const RuleSet& rules() const noexcept { return rules_; }
+
+    // Cards that are wild under these rules (empty if none).
+    CardMask wildMask() const noexcept { return wildMask_; }
 
     // Highest rank of a straight in a 13-bit rank mask, or -1 if none.
     int straightHigh(std::uint16_t rankMask) const noexcept { return straightHigh_[rankMask] - 1; }
@@ -57,9 +62,11 @@ private:
     HandScore evalStandard(CardMask cards) const noexcept;
     HandScore evalMonotone(CardMask cards) const noexcept;
     HandScore evalGeneral(CardMask cards) const noexcept;
+    HandScore evalWild(CardMask natural, int wilds) const noexcept;
 
     RuleSet rules_;
     Mode mode_ = Mode::Standard;
+    CardMask wildMask_ = 0;
     std::array<std::uint8_t, kHandTypeCount> strength_{};
     std::array<bool, kHandTypeCount> enabled_{};
     std::array<std::uint8_t, 8192> straightHigh_{};  // high rank + 1, 0 = none

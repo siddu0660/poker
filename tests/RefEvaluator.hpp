@@ -1,9 +1,13 @@
 #pragma once
 // Brute-force reference evaluator, written directly from the semantics in
 // Evaluator.hpp and deliberately sharing no code with it: score every 5-card
-// subset category by category and keep the best.
+// subset category by category and keep the best. Wild cards are tried as every
+// rank, with all wilds in one suit (so flushes are reachable) or in a suit of
+// their own (never a flush).
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <initializer_list>
 #include <vector>
 
 #include "core/Cards.hpp"
@@ -12,46 +16,56 @@
 
 namespace pftest {
 
-inline pf::HandScore refScore5(const pf::RuleSet& rules, const std::vector<pf::CardId>& hand) {
+struct RCard { int rank; int suit; };
+
+inline pf::HandScore refScore5(const pf::RuleSet& rules, const RCard* hand, int n) {
     using pf::HandType;
     std::array<int, 13> count{};
-    for (auto c : hand) ++count[static_cast<std::size_t>(pf::rankOf(c))];
+    for (int i = 0; i < n; ++i) ++count[static_cast<std::size_t>(hand[i].rank)];
 
-    std::vector<int> ranksDesc;
-    for (auto c : hand) ranksDesc.push_back(pf::rankOf(c));
-    std::sort(ranksDesc.rbegin(), ranksDesc.rend());
-
-    const bool five = hand.size() == 5;
-    bool flush = five;
-    for (auto c : hand) flush = flush && pf::suitOf(c) == pf::suitOf(hand[0]);
+    // A flush is five distinct cards of one suit; a straight is five distinct ranks in a row.
+    int distinctRanks = 0;
+    for (int c : count) distinctRanks += c > 0;
+    bool flush = n == 5 && distinctRanks == 5;
+    for (int i = 0; i < n; ++i) flush = flush && hand[i].suit == hand[0].suit;
 
     int straightHigh = -1;
-    if (five) {
-        std::vector<int> distinct = ranksDesc;
-        distinct.erase(std::unique(distinct.begin(), distinct.end()), distinct.end());
+    if (n == 5 && distinctRanks == 5) {
+        int hi = 12, lo = 0;
+        while (count[static_cast<std::size_t>(hi)] == 0) --hi;
+        while (count[static_cast<std::size_t>(lo)] == 0) ++lo;
         const int m = rules.minRank();
-        if (distinct.size() == 5) {
-            if (distinct[0] - distinct[4] == 4 && distinct[4] >= m) straightHigh = distinct[0];
-            else if (rules.wheelStraight && distinct[0] == 12 && distinct[1] == m + 3 && distinct[4] == m)
-                straightHigh = m + 3;
-        }
+        if (hi - lo == 4 && lo >= m) straightHigh = hi;
+        else if (rules.wheelStraight && hi == 12 && count[static_cast<std::size_t>(m)] &&
+                 count[static_cast<std::size_t>(m + 1)] && count[static_cast<std::size_t>(m + 2)] &&
+                 count[static_cast<std::size_t>(m + 3)])
+            straightHigh = m + 3;
     }
 
-    auto ranksWithAtLeast = [&](int n) {
-        std::vector<int> out;
-        for (int r = 12; r >= 0; --r) if (count[static_cast<std::size_t>(r)] >= n) out.push_back(r);
+    // Ranks held at least k times, highest first (fixed arrays: this runs millions of times).
+    struct Ranks { int r[13]; int n = 0; bool empty() const { return n == 0; } };
+    auto ranksWithAtLeast = [&](int k) {
+        Ranks out;
+        for (int r = 12; r >= 0; --r) if (count[static_cast<std::size_t>(r)] >= k) out.r[out.n++] = r;
         return out;
     };
-    // defining ranks, then every other card high to low, first 5 nibbles
-    auto encode = [&](std::vector<int> defining, std::vector<std::pair<int, int>> used) {
+    const Ranks pairs = ranksWithAtLeast(2);
+    const Ranks trips = ranksWithAtLeast(3);
+    const Ranks quads = ranksWithAtLeast(4);
+    const Ranks fives = ranksWithAtLeast(5);
+
+    // defining ranks (with how many cards each uses), then every other card high to low
+    auto encode = [&](std::initializer_list<std::pair<int, int>> defining) {
         std::array<int, 13> left = count;
-        for (auto [r, n] : used) left[static_cast<std::size_t>(r)] -= n;
-        std::vector<int> nib = defining;
-        for (int r = 12; r >= 0; --r)
-            for (int k = 0; k < left[static_cast<std::size_t>(r)]; ++k) nib.push_back(r);
         std::uint32_t tb = 0;
-        for (std::size_t i = 0; i < nib.size() && i < 5; ++i)
-            tb |= static_cast<std::uint32_t>(nib[i] + 1) << (16 - 4 * i);
+        int pos = 0;
+        for (auto [r, k] : defining) {
+            left[static_cast<std::size_t>(r)] -= k;
+            tb |= static_cast<std::uint32_t>(r + 1) << (16 - 4 * pos++);
+        }
+        for (int r = 12; r >= 0; --r)
+            for (int k = 0; k < left[static_cast<std::size_t>(r)] && pos < 5; ++k)
+                tb |= static_cast<std::uint32_t>(r + 1) << (16 - 4 * pos++);
         return tb;
     };
 
@@ -60,29 +74,30 @@ inline pf::HandScore refScore5(const pf::RuleSet& rules, const std::vector<pf::C
         const HandType t = rules.order[s];
         bool ok = false;
         std::uint32_t tb = 0;
-        const auto pairs = ranksWithAtLeast(2);
-        const auto trips = ranksWithAtLeast(3);
-        const auto quads = ranksWithAtLeast(4);
         switch (t) {
-            case HandType::HighCard: ok = true; tb = encode({}, {}); break;
+            case HandType::HighCard: ok = true; tb = encode({}); break;
             case HandType::Pair:
-                if ((ok = !pairs.empty())) tb = encode({pairs[0]}, {{pairs[0], 2}});
+                if ((ok = !pairs.empty())) tb = encode({{pairs.r[0], 2}});
                 break;
             case HandType::TwoPair:
-                if ((ok = pairs.size() >= 2)) tb = encode({pairs[0], pairs[1]}, {{pairs[0], 2}, {pairs[1], 2}});
+                if ((ok = pairs.n >= 2)) tb = encode({{pairs.r[0], 2}, {pairs.r[1], 2}});
                 break;
             case HandType::ThreeOfAKind:
-                if ((ok = !trips.empty())) tb = encode({trips[0]}, {{trips[0], 3}});
+                if ((ok = !trips.empty())) tb = encode({{trips.r[0], 3}});
                 break;
             case HandType::FourOfAKind:
-                if ((ok = !quads.empty())) tb = encode({quads[0]}, {{quads[0], 4}});
+                if ((ok = !quads.empty())) tb = encode({{quads.r[0], 4}});
+                break;
+            case HandType::FiveOfAKind:
+                if ((ok = !fives.empty())) tb = encode({{fives.r[0], 5}});
                 break;
             case HandType::FullHouse:
                 if (!trips.empty()) {
-                    for (int p : pairs) {
-                        if (p == trips[0]) continue;
+                    for (int i = 0; i < pairs.n; ++i) {
+                        const int p = pairs.r[i];
+                        if (p == trips.r[0]) continue;
                         ok = true;
-                        tb = encode({trips[0], p}, {{trips[0], 3}, {p, 2}});
+                        tb = encode({{trips.r[0], 3}, {p, 2}});
                         break;
                     }
                 }
@@ -91,7 +106,7 @@ inline pf::HandScore refScore5(const pf::RuleSet& rules, const std::vector<pf::C
                 if ((ok = straightHigh >= 0)) tb = static_cast<std::uint32_t>(straightHigh + 1) << 16;
                 break;
             case HandType::Flush:
-                if ((ok = flush)) tb = encode({}, {});
+                if ((ok = flush)) tb = encode({});
                 break;
             case HandType::StraightFlush:
                 if ((ok = flush && straightHigh >= 0)) tb = static_cast<std::uint32_t>(straightHigh + 1) << 16;
@@ -104,19 +119,52 @@ inline pf::HandScore refScore5(const pf::RuleSet& rules, const std::vector<pf::C
     return best;
 }
 
-inline pf::HandScore refScore(const pf::RuleSet& rules, const std::vector<pf::CardId>& cards) {
-    if (cards.size() <= 5) return refScore5(rules, cards);
+inline bool refIsWild(const pf::RuleSet& r, pf::CardId c) {
+    switch (r.wild) {
+        case pf::WildMode::Deuces: return !pf::isJoker(c) && pf::rankOf(c) == 0;
+        case pf::WildMode::Jokers: return pf::isJoker(c);
+        case pf::WildMode::OneEyedJacks: return c == pf::makeCard(3, 9) || c == pf::makeCard(2, 9);
+        case pf::WildMode::None: break;
+    }
+    return false;
+}
+
+// Best score over every 5-card subset and every wild substitution.
+inline pf::HandScore refScore(const pf::RuleSet& rules, pf::CardMask mask) {
+    std::vector<pf::CardId> cards;
+    for (int i = 0; i < 64; ++i) {
+        if (!(mask >> i & 1)) continue;
+        const auto c = static_cast<pf::CardId>(i);
+        if (pf::isJoker(c) && !refIsWild(rules, c)) continue;  // dead joker
+        cards.push_back(c);
+    }
+    const int n = static_cast<int>(cards.size());
+    const int take = std::min(n, 5);
     pf::HandScore best = 0;
-    const std::size_t n = cards.size();
-    std::vector<pf::CardId> sub(5);
-    for (std::size_t a = 0; a < n; ++a)
-        for (std::size_t b = a + 1; b < n; ++b)
-            for (std::size_t c = b + 1; c < n; ++c)
-                for (std::size_t d = c + 1; d < n; ++d)
-                    for (std::size_t e = d + 1; e < n; ++e) {
-                        sub = {cards[a], cards[b], cards[c], cards[d], cards[e]};
-                        best = std::max(best, refScore5(rules, sub));
-                    }
+    for (unsigned sub = 0; sub < (1u << n); ++sub) {
+        if (std::popcount(sub) != take) continue;
+        RCard hand[5];
+        int naturals = 0, wilds = 0;
+        for (int i = 0; i < n; ++i) {
+            if (!(sub >> i & 1)) continue;
+            const auto c = cards[static_cast<std::size_t>(i)];
+            if (refIsWild(rules, c)) ++wilds;
+            else hand[naturals++] = {pf::rankOf(c), pf::suitOf(c)};
+        }
+        // odometer over wild ranks, then each suit choice
+        std::vector<int> ranks(static_cast<std::size_t>(wilds), rules.minRank());
+        while (true) {
+            for (int suit = 0; suit <= (wilds ? 4 : 0); ++suit) {
+                for (int w = 0; w < wilds; ++w)
+                    hand[naturals + w] = {ranks[static_cast<std::size_t>(w)], suit == 4 ? -1 : suit};
+                best = std::max(best, refScore5(rules, hand, take));
+            }
+            int w = 0;
+            while (w < wilds && ++ranks[static_cast<std::size_t>(w)] > 12)
+                ranks[static_cast<std::size_t>(w++)] = rules.minRank();
+            if (w == wilds) break;
+        }
+    }
     return best;
 }
 

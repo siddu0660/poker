@@ -54,7 +54,7 @@ int crossCheck(const RuleSet& rules, int hands, std::uint64_t seed) {
         const int n = 5 + static_cast<int>(rng.below(3));  // 5, 6 or 7 cards
         const CardMask m = randomHand(rng, deck, n);
         const HandScore got = ev.evaluate(m);
-        const HandScore want = pftest::refScore(rules, cardsOf(m));
+        const HandScore want = pftest::refScore(rules, m);
         if (got != want && ++mismatches <= 3) {
             std::cerr << "  mismatch on";
             for (auto c : cardsOf(m)) std::cerr << " " << cardName(c);

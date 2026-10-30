@@ -1,6 +1,7 @@
 // On-demand checks that are too slow for every CI build:
 //   pokercore_exhaustive          all C(52,7) hands vs the known category counts
 //   pokercore_exhaustive --bench  single-thread throughput on random 7-card hands
+//   pokercore_exhaustive --wild   every 5-card deuces-wild hand vs brute force
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -10,6 +11,7 @@
 
 #include "core/Evaluator.hpp"
 #include "core/Rng.hpp"
+#include "RefEvaluator.hpp"
 
 using namespace pf;
 using Clock = std::chrono::steady_clock;
@@ -96,8 +98,55 @@ int bench() {
     gen.order = {HandType::HighCard, HandType::Pair, HandType::ThreeOfAKind, HandType::Straight,
                  HandType::Flush, HandType::FullHouse, HandType::FourOfAKind, HandType::StraightFlush};
     benchRules("two pair off (general)", gen);
+    RuleSet deuces;
+    deuces.wild = WildMode::Deuces;
+    deuces.order.push_back(HandType::FiveOfAKind);
+    benchRules("deuces wild (mixed)", deuces);
     const bool ok = standard >= 30.0;
     std::printf("target 30 M/s/core on the standard path: %s\n", ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
+// Every 5-card hand under the shipped Deuces Wild rules, compared with the
+// brute-force reference, plus category counts against the published
+// deuces-wild video poker frequencies.
+int wildExhaustive() {
+    RuleSet rules;
+    rules.wild = WildMode::Deuces;
+    rules.order.push_back(HandType::FiveOfAKind);
+    sanitize(rules);
+    Evaluator ev(rules);
+    std::array<std::uint64_t, kHandTypeCount> n{};
+    std::uint64_t mismatches = 0;
+    const auto t0 = Clock::now();
+    for (int a = 0; a < 52; ++a)
+        for (int b = a + 1; b < 52; ++b)
+            for (int c = b + 1; c < 52; ++c)
+                for (int d = c + 1; d < 52; ++d)
+                    for (int e = d + 1; e < 52; ++e) {
+                        const CardMask m = CardMask{1} << a | CardMask{1} << b | CardMask{1} << c |
+                                           CardMask{1} << d | CardMask{1} << e;
+                        const HandScore s = ev.evaluate(m);
+                        ++n[static_cast<std::size_t>(scoreCategory(s))];
+                        if (s != pftest::refScore(rules, m) && ++mismatches <= 5)
+                            std::printf("mismatch on mask %llx\n", static_cast<unsigned long long>(m));
+                    }
+    const double secs = std::chrono::duration<double>(Clock::now() - t0).count();
+
+    // Natural + wild royals and straight flushes share one category here, and
+    // four deuces count as five of a kind.
+    constexpr std::array<std::uint64_t, kHandTypeCount> expected{
+        0, 0, 95040, 355080, 62232, 14472, 12672, 31552, 4 + 480 + 2068, 624 + 48};
+    bool ok = mismatches == 0;
+    for (std::size_t i = 2; i < expected.size(); ++i) {
+        const bool match = n[i] == expected[i];
+        ok = ok && match;
+        std::printf("%-16s %10llu  %s\n", std::string(handTypeDisplay(static_cast<HandType>(i))).c_str(),
+                    static_cast<unsigned long long>(n[i]), match ? "ok" : "MISMATCH");
+    }
+    std::printf("pair + high card %llu (not checked)\n", static_cast<unsigned long long>(n[0] + n[1]));
+    std::printf("%llu reference mismatches, %.1f s\n%s\n", static_cast<unsigned long long>(mismatches), secs,
+                ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 
@@ -105,5 +154,6 @@ int bench() {
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--bench") == 0) return bench();
+    if (argc > 1 && std::strcmp(argv[1], "--wild") == 0) return wildExhaustive();
     return exhaustive();
 }

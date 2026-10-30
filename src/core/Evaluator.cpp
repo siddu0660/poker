@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <initializer_list>
 
 namespace pf {
 
@@ -83,12 +84,24 @@ Evaluator::Evaluator(const RuleSet& rules) : rules_(rules) {
     for (auto [sup, sub] : kContainment)
         if (on(sub) && !(on(sup) && str(sup) > str(sub))) monotone = false;
 
+    switch (rules_.wild) {
+        case WildMode::None: break;
+        case WildMode::Deuces:
+            if (minRank == 0)
+                for (int suit = 0; suit < kSuits; ++suit) wildMask_ |= bit(makeCard(suit, 0));
+            break;
+        case WildMode::Jokers: wildMask_ = bit(kJokerA) | bit(kJokerB); break;
+        case WildMode::OneEyedJacks: wildMask_ = bit(makeCard(3, 9)) | bit(makeCard(2, 9)); break;
+    }
+
     if (rules_.order == standardOrder()) mode_ = Mode::Standard;
     else if (monotone) mode_ = Mode::Monotone;
     else mode_ = Mode::General;
 }
 
 HandScore Evaluator::evaluate(CardMask cards) const noexcept {
+    if (const CardMask wild = cards & wildMask_) [[unlikely]]
+        return evalWild(cards & ~wildMask_, popcount(wild));
     switch (mode_) {
         case Mode::Standard: return evalStandard(cards);
         case Mode::Monotone: return evalMonotone(cards);
@@ -223,6 +236,134 @@ HandScore Evaluator::evalGeneral(CardMask cards) const noexcept {
         consider(HandType::Pair, static_cast<std::uint32_t>(p1 + 1) << 16 | kickers(without(p1, 2), 3) << 4);
     }
     return best;
+}
+
+// Analytic wild-card evaluation: for each enabled type, build its best hand
+// directly. Defining ranks are chosen highest first, naturals are used before
+// wilds, and any wild left over plays as an ace kicker.
+HandScore Evaluator::evalWild(CardMask natural, int wilds) const noexcept {
+    const RankSets r = rankSets(natural);
+    const int lo = std::clamp(rules_.minRank(), 0, 8);
+    const std::uint32_t deckRanks = (0x1FFFu >> lo) << lo;
+    // Ranks held at least n times naturally; with w wilds, rank x reaches n copies
+    // exactly when it is in atLeast(n - w).
+    auto atLeast = [&](int n) -> std::uint32_t {
+        switch (n) {
+            case 1: return r.any;
+            case 2: return r.two;
+            case 3: return r.three;
+            case 4: return r.four;
+            default: return n <= 0 ? deckRanks : 0;
+        }
+    };
+    auto cnt = [&](int rank) {
+        const std::uint32_t b = rankBit(rank);
+        return int{(r.any & b) != 0} + int{(r.two & b) != 0} + int{(r.three & b) != 0} + int{(r.four & b) != 0};
+    };
+    auto need = [&](int rank, int n) { return std::max(0, n - cnt(rank)); };
+
+    using Counts = std::array<int, kRanks>;
+    // Natural cards left after the defining ranks take up to n copies each.
+    auto leftAfter = [&](std::initializer_list<std::pair<int, int>> used) {
+        Counts left{};
+        for (int k = 0; k < kRanks; ++k) left[static_cast<std::size_t>(k)] = cnt(k);
+        for (auto [rank, n] : used) {
+            auto& c = left[static_cast<std::size_t>(rank)];
+            c -= std::min(c, n);
+        }
+        return left;
+    };
+    // Leftover wilds play as aces, then the highest natural cards.
+    auto kickers = [&](const Counts& left, int spare, int slots) {
+        std::uint32_t out = 0;
+        for (; spare > 0 && slots > 0; --spare, --slots) out |= 13u << (4 * (slots - 1));
+        for (int rank = 12; rank >= 0 && slots > 0; --rank)
+            for (int n = left[static_cast<std::size_t>(rank)]; n > 0 && slots > 0; --n, --slots)
+                out |= static_cast<std::uint32_t>(rank + 1) << (4 * (slots - 1));
+        return out;
+    };
+    // Highest straight reachable with the wilds, as high rank + 1 (0 = none).
+    auto straight = [&](std::uint32_t mask) -> std::uint32_t {
+        for (int hi = 12; hi >= lo + 4; --hi)
+            if (std::popcount((0x1Fu << (hi - 4)) & ~mask) <= wilds) return static_cast<std::uint32_t>(hi + 1);
+        if (rules_.wheelStraight && std::popcount((rankBit(12) | 0xFu << lo) & ~mask) <= wilds)
+            return static_cast<std::uint32_t>(lo + 4);
+        return 0;
+    };
+    auto rankNib = [](int rank, int pos) { return static_cast<std::uint32_t>(rank + 1) << pos; };
+
+    // Strength outranks any tiebreak, so the first type (strongest first) that
+    // the hand can make is the answer. Defining ranks are chosen highest first,
+    // naturals are used before wilds, and spare wilds play as ace kickers.
+    for (auto it = rules_.order.rbegin(); it != rules_.order.rend(); ++it) {
+        const HandType t = *it;
+        switch (t) {
+            case HandType::FiveOfAKind:
+                if (const std::uint32_t m = atLeast(5 - wilds)) return make(t, rankNib(topRank(m), 16));
+                break;
+            case HandType::FourOfAKind:
+                if (const std::uint32_t m = atLeast(4 - wilds)) {
+                    const int q = topRank(m);
+                    return make(t, rankNib(q, 16) | kickers(leftAfter({{q, 4}}), wilds - need(q, 4), 1) << 12);
+                }
+                break;
+            case HandType::FullHouse:
+                for (std::uint32_t m = atLeast(3 - wilds); m; m &= ~rankBit(topRank(m))) {
+                    const int trips = topRank(m);
+                    const std::uint32_t pairs = atLeast(2 - (wilds - need(trips, 3))) & ~rankBit(trips);
+                    if (pairs) return make(t, rankNib(trips, 16) | rankNib(topRank(pairs), 12));
+                }
+                break;
+            case HandType::ThreeOfAKind:
+                if (const std::uint32_t m = atLeast(3 - wilds)) {
+                    const int k = topRank(m);
+                    return make(t, rankNib(k, 16) | kickers(leftAfter({{k, 3}}), wilds - need(k, 3), 2) << 8);
+                }
+                break;
+            case HandType::TwoPair:
+                for (std::uint32_t m = atLeast(2 - wilds); m; m &= ~rankBit(topRank(m))) {
+                    const int p1 = topRank(m);
+                    const int spare = wilds - need(p1, 2);
+                    if (const std::uint32_t lower = atLeast(2 - spare) & (rankBit(p1) - 1)) {
+                        const int p2 = topRank(lower);
+                        return make(t, rankNib(p1, 16) | rankNib(p2, 12) |
+                                           kickers(leftAfter({{p1, 2}, {p2, 2}}), spare - need(p2, 2), 1) << 8);
+                    }
+                }
+                break;
+            case HandType::Pair:
+                if (const std::uint32_t m = atLeast(2 - wilds)) {
+                    const int p = topRank(m);
+                    return make(t, rankNib(p, 16) | kickers(leftAfter({{p, 2}}), wilds - need(p, 2), 3) << 4);
+                }
+                break;
+            case HandType::Straight:
+                if (const std::uint32_t sh = straight(r.any)) return make(t, sh << 16);
+                break;
+            case HandType::StraightFlush: {
+                std::uint32_t sh = 0;
+                for (std::uint32_t m : r.suit)
+                    if (std::popcount(m) + wilds >= 5) sh = std::max(sh, straight(m));
+                if (sh) return make(t, sh << 16);
+                break;
+            }
+            case HandType::Flush: {
+                std::uint32_t tb = 0;
+                for (std::uint32_t m : r.suit) {
+                    if (std::popcount(m) + wilds < 5) continue;
+                    std::uint32_t filled = m;
+                    for (int rank = 12, left = wilds; rank >= lo && left > 0; --rank)
+                        if (!(filled & rankBit(rank))) { filled |= rankBit(rank); --left; }
+                    tb = std::max(tb, topPacked_[filled]);
+                }
+                if (tb) return make(t, tb);
+                break;
+            }
+            case HandType::HighCard:
+            case HandType::Count: break;
+        }
+    }
+    return make(HandType::HighCard, kickers(leftAfter({}), wilds, 5));
 }
 
 }  // namespace pf

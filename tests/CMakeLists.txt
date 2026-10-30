@@ -3,6 +3,7 @@ add_executable(pokercore_tests
   test_cards.cpp
   test_rules.cpp
   test_evaluator.cpp
+  test_wild.cpp
 )
 target_link_libraries(pokercore_tests PRIVATE pokercore pf_options)
 target_compile_definitions(pokercore_tests PRIVATE PF_RULES_DIR="${CMAKE_SOURCE_DIR}/rules")
@@ -14,4 +15,6 @@ add_executable(pokercore_exhaustive exhaustive.cpp)
 target_link_libraries(pokercore_exhaustive PRIVATE pokercore pf_options)
 add_test(NAME evaluator_exhaustive_c52_7 COMMAND pokercore_exhaustive CONFIGURATIONS Exhaustive)
 add_test(NAME evaluator_benchmark COMMAND pokercore_exhaustive --bench CONFIGURATIONS Exhaustive)
-set_tests_properties(evaluator_exhaustive_c52_7 evaluator_benchmark PROPERTIES LABELS exhaustive)
+add_test(NAME evaluator_wild_exhaustive COMMAND pokercore_exhaustive --wild CONFIGURATIONS Exhaustive)
+set_tests_properties(evaluator_exhaustive_c52_7 evaluator_benchmark evaluator_wild_exhaustive
+                     PROPERTIES LABELS exhaustive)
