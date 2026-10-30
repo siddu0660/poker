@@ -158,7 +158,7 @@ int TableState::activeCount() const {
     return static_cast<int>(std::count_if(seats_.begin(), seats_.end(), [](const TableSeat& s) { return !s.folded; }));
 }
 
-Scenario TableState::scenario(std::uint64_t simSeed) const {
+Scenario TableState::scenario(std::uint64_t simSeed, bool showdown) const {
     Scenario sc;
     sc.evaluator = evaluator_;
     sc.board = board();
@@ -166,7 +166,7 @@ Scenario TableState::scenario(std::uint64_t simSeed) const {
     for (const TableSeat& s : seats_) {
         Seat seat;
         seat.active = !s.folded;
-        if (s.known) seat.hole = s.hole;
+        if (s.known || showdown) seat.hole = s.hole;
         sc.seats.push_back(seat);
     }
     return sc;

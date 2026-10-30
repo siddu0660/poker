@@ -58,7 +58,9 @@ public:
     void setHero(int seat);
     void setHole(int seat, const HoleCards& hole);  // swaps cards so the deck stays consistent
 
-    Scenario scenario(std::uint64_t simSeed) const;
+    // `showdown` treats every player still in as a known hand (used on the
+    // river, when the cards are turned over).
+    Scenario scenario(std::uint64_t simSeed, bool showdown = false) const;
     // Seats that win at the river among those still in. Empty before the river.
     std::vector<int> showdownWinners() const;
 

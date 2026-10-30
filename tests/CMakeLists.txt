@@ -7,8 +7,9 @@ add_executable(pokercore_tests
   test_simulator.cpp
   test_analysis.cpp
   test_table.cpp
+  test_appstate.cpp
 )
-target_link_libraries(pokercore_tests PRIVATE pokercore pf_options)
+target_link_libraries(pokercore_tests PRIVATE pokerapp pokercore pf_options)
 target_compile_definitions(pokercore_tests PRIVATE PF_RULES_DIR="${CMAKE_SOURCE_DIR}/rules")
 add_test(NAME pokercore_tests COMMAND pokercore_tests)
 

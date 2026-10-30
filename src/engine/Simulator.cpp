@@ -349,9 +349,8 @@ void SimEngine::loop() {
             windowStart_ = t1;
             windowRuns_ = 0;
             windowComputeMs_ = 0;
-        } else if (runsPerSec_ == 0) {
-            const double since = std::chrono::duration<double>(t1 - epochStart_).count();
-            if (since > 0) runsPerSec_ = static_cast<double>(totals_.runs) / since;
+        } else if (sinceWindow >= 0.1 || runsPerSec_ == 0) {  // a running estimate until the first full second is in
+            runsPerSec_ = static_cast<double>(windowRuns_) / sinceWindow;
         }
 
         if (autoStopHalfWidth_ > 0 && heroSeat_ >= 0 &&

@@ -137,11 +137,14 @@ std::string describeNeeds(const std::vector<CardId>& unseen, const std::vector<C
         if (any && all) { fullRanks.push_back(r); covered |= rankMask; }
     }
     if (!fullRanks.empty() && covered == outMask) {
+        // Long lists would not fit a side panel: name the top three and count the rest.
+        const std::size_t shown = fullRanks.size() > 4 ? 3 : fullRanks.size();
         std::string text = "any ";
-        for (std::size_t i = 0; i < fullRanks.size(); ++i) {
-            if (i) text += i + 1 == fullRanks.size() ? " or " : ", ";
+        for (std::size_t i = 0; i < shown; ++i) {
+            if (i) text += (i + 1 == shown && shown == fullRanks.size()) ? " or " : ", ";
             text += name(fullRanks[i]);
         }
+        if (shown < fullRanks.size()) text += " or " + std::to_string(fullRanks.size() - shown) + " more ranks";
         return text;
     }
 
@@ -287,7 +290,9 @@ void detectDraws(const Evaluator& ev, const HoleCards& hole, const std::vector<C
             else kind = "Double gutshot straight draw";
             out.draws.push_back(kind + " (" + std::to_string(outs) + " outs)");
             if (drawLabel.empty() || drawLabel.rfind("Backdoor", 0) == 0) {
-                drawLabel = kind.substr(0, kind.size() - std::string(" straight draw").size()) + " straight draw";
+                drawLabel = completing.size() == 1                                       ? "Gutshot draw"
+                            : (completing.size() == 2 && completing[1] - completing[0] == 5) ? "Open-ended draw"
+                                                                                           : "Double gutshot";
             }
         }
     }

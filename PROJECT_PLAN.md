@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **M0 (headless) and M1–M5 done; M6 (UI panels) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **M0–M6 done; M7 (polish) next.** The five panels run on a docked window; the manual UI checklist in §9 has not been walked through yet. This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -273,6 +273,15 @@ Edits a **draft** copy; **Apply Rules** commits (highlighted when dirty), **Reve
 - Examples: `100,000 runs completed in 12 ms (8.3M runs/s)`, `New hand #4, dealer seat 2`, `Flop: Ah Kd 7c`, `Rules loaded: Short Deck (6+)`.
 - Auto-scroll toggle, level filter, text filter, Clear, Copy.
 
+### How the UI is built (M6)
+- **Layering**: `pokerapp` (`ui/AppState`) holds everything the panels share and has no ImGui or SDL dependency, so it is unit-tested headlessly (`tests/test_appstate.cpp`). The panels are free functions over `AppState`; `App.cpp` owns SDL, GL, the dock layout and the main loop.
+- **One writer per state**: every change to the table goes through an `AppState` method that rebuilds the `Scenario` and restarts the simulation, so the simulation can never disagree with what is on screen.
+- **Showdown**: on the river every player still in turns their cards over, so the simulation treats all of them as known hands (equity becomes certain) and the winners are highlighted.
+- **Hands tab**: "By river" and "Reach" are exact once the flop is out (every remaining board is enumerated) and come from the simulation before that; the panel says which. "Needs" is a second line under each row because six columns do not fit a side panel.
+- **Dependencies**: SDL2 from `find_package` (CMake config), else fetched at release-2.30.9. Dear ImGui `v1.91.9-docking` and ImPlot `v1.0` are fetched with git at those tags (tarball downloads are not always reachable). ImPlot 1.0 styles plot items through `ImPlotSpec`.
+- **Scripted runs**: `pokerforge --frames N --advance K --players N --seed S --tab T --fold A,B --size WxH --screenshot f.ppm` runs without user input; CI uses it as a smoke test under xvfb.
+- **Not done in M6**: moving a window between monitors with different DPI keeps the font size picked at start-up; the Windows and macOS UI builds are only checked by CI.
+
 ### Notes from the reference screenshot
 What to keep:
 - Left column for Settings, Rules in the middle, Equity on the right, Table below, Console at the bottom right.
@@ -369,15 +378,15 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 ### v1 milestones
 | ID | Task | Status |
 |---|---|---|
-| M0 | Skeleton: CMake + Ninja presets for all 3 OSes, empty window with dockspace | [~] headless core, presets, tests done; dockspace window waits for M6 deps |
+| M0 | Skeleton: CMake + Ninja presets for all 3 OSes, empty window with dockspace | [x] presets, CI, headless core, docked window |
 | M1 | Cards, RNG, rules JSON (load / save / validate) | [x] |
 | M2 | Evaluator without wilds, passes the C(52,7) distribution check | [x] all 133,784,560 hands match; ~47M evals/s/core on random hands |
 | M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [x] every 5-card deuces-wild hand matches brute force and the published frequencies |
 | M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [x] ~18M six-player runs/s on 4 cores; results bit-identical for any thread count |
 | M5 | Table state + hand analysis (current hand, outs, draws) | [x] `HandAnalysis`, `TableState`, `Betting.hpp`; outs and by-river shares checked against exact enumeration |
-| M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [ ] |
+| M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [x] all five panels, default dock layout, scripted screenshots; popups and menus only checked by code and state tests |
 | M7 | Polish: menu, drag-and-drop, CSV export, layout reset, theme switch (classic felt / flat modern), README | [ ] |
-| CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] workflow written incl. non-gating benchmark step; Windows/macOS jobs not yet seen running |
+| CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] builds and tests on all three; builds the UI too and smoke-runs it under xvfb on Linux (new in M6, not yet seen running) |
 
 ### Backlog (deferred, tracked only)
 | ID | Task | Status |
