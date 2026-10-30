@@ -64,7 +64,7 @@ std::uint64_t AppState::pickSeed() const {
 
 void AppState::pushScenario() {
     engine.setScenario(table.scenario(pickSeed(), table.street() == Street::River));
-    engine.setAutoStop(table.hero(), autoStopPercent / 100.0);
+    engine.setAutoStop(autoStopPercent / 100.0);
     epoch_ = engine.snapshot().epoch;
     ++sceneVersion_;
 }
@@ -173,7 +173,7 @@ void AppState::setSeed(bool fixed, std::uint64_t seed) {
 
 void AppState::setAutoStopPercent(double percent) {
     autoStopPercent = percent;
-    engine.setAutoStop(table.hero(), percent / 100.0);
+    engine.setAutoStop(percent / 100.0);
 }
 
 void AppState::setExactWhenPossible(bool on) {

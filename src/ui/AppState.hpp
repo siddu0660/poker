@@ -41,7 +41,8 @@ struct SeatView {
 
 struct ConsoleState {
     bool autoScroll = true;
-    std::array<bool, 5> levelOn{true, true, true, true, true};  // Info, Warn, Error, Sim, Game
+    // Info, Warn, Error, Sim, Game. The per-second simulation lines are noise for most people.
+    std::array<bool, 5> levelOn{true, true, true, false, true};
     char filter[128] = {};
 };
 
@@ -113,7 +114,7 @@ public:
     int threads = 0;  // 0 = every core
     bool fixedSeed = false;
     std::uint64_t seedValue = 12345;
-    double autoStopPercent = 0.0;
+    double autoStopPercent = 0.05;  // settle once every equity is within +-0.05%; 0 keeps refining
     bool exactWhenPossible = true;
     bool paused = false;
 
@@ -131,7 +132,8 @@ public:
 
     PanelVisibility visible;
     ConsoleState console;
-    int forceTab = -1;  // scripted runs only: keep this Equity tab selected
+    int forceTab = -1;          // scripted runs only: keep this Equity tab selected
+    int forceSettingsTab = -1;  // scripted runs only: keep this Settings tab selected
     bool layoutResetRequested = false;
     bool quitRequested = false;
 

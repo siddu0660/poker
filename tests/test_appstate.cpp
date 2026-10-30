@@ -440,3 +440,25 @@ PF_TEST(app_exact_mode_setting) {
     app.applySettings(s);
     CHECK(waitFor([&] { app.frame(); return app.snap.exact; }, 30));
 }
+
+PF_TEST(app_estimates_settle_by_default) {
+    AppState app = makeApp();
+    CHECK_EQ(app.autoStopPercent, 0.05);  // the default: settle within +-0.05%
+    CHECK(UserSettings{}.autoStopPercent == 0.05);
+    CHECK(!app.console.levelOn[static_cast<std::size_t>(LogLevel::Sim)]);  // per-second lines stay out of the way
+
+    app.setAutoStopPercent(0.3);  // looser, so the test is quick
+    app.setSeatCount(4);          // preflop against random hands: too many deals to count
+    CHECK(waitFor([&] { app.frame(); return app.snap.autoStopped; }, 30));
+    CHECK(!app.snap.exact);
+    CHECK(app.snap.worstCI95() <= 0.003);
+
+    const auto settled = app.snap.runs;
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    app.frame();
+    CHECK_EQ(app.snap.runs, settled);
+
+    app.setAutoStopPercent(0.0);  // keep refining
+    CHECK(waitFor([&] { app.frame(); return app.snap.runs > settled + 5000; }, 10));
+    CHECK(!app.snap.autoStopped);
+}

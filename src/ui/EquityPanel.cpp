@@ -66,11 +66,11 @@ void drawReadouts(AppState& app) {
     ImGui::Dummy({w, h + 4.0f});
 
     if (s.exact)
-        ImGui::Text("Overall equity %s, exact   |   all %s deals", percent(s.equity(hero)).c_str(),
-                    withCommas(s.runs).c_str());
+        ImGui::Text("Overall equity %s, exact (all %s deals)", percent(s.equity(hero)).c_str(),
+                    withCommas(s.exactDeals).c_str());
     else
-        ImGui::Text("Overall equity %s +/- %s   |   %s runs", percent(s.equity(hero)).c_str(),
-                    percent(s.equityCI95(hero), 2).c_str(), withCommas(s.runs).c_str());
+        ImGui::Text("Overall equity %s, estimated +/- %s", percent(s.equity(hero)).c_str(),
+                    percent(s.equityCI95(hero), 2).c_str());
 }
 
 void drawEquityChart(AppState& app, float height) {
@@ -206,7 +206,7 @@ void drawHandsTab(AppState& app) {
         ImGui::EndTable();
     }
     ImGui::TextDisabled(shares.exact ? "By river and Reach are exact (every remaining board)."
-                                     : "By river and Reach come from the simulation.");
+                                     : "By river and Reach are estimated from random deals.");
 
     // Bar chart of the same data, in the rules' ranking order.
     std::vector<double> values;
@@ -281,17 +281,18 @@ void drawOddsTab(AppState& app) {
     ImGui::TextDisabled("EV = equity x pot - (1 - equity) x call");
 }
 
-void drawSimulationTab(AppState& app) {
+void drawDetailsTab(AppState& app) {
     const Snapshot& s = app.snap;
-    ImGui::Text("Runs: %s    Speed: %s runs/s    Epoch: %llu", withCommas(s.runs).c_str(),
-                shortCount(s.runsPerSec).c_str(), static_cast<unsigned long long>(s.epoch));
-    ImGui::Text("Last batch: %s runs in %.1f ms", shortCount(static_cast<double>(s.lastBatchRuns)).c_str(), static_cast<double>(s.lastBatchMs));
+    if (s.exact)
+        ImGui::Text("Method: counted every possible deal (%s)", withCommas(s.exactDeals).c_str());
+    else
+        ImGui::Text("Method: estimated from %s random deals", withCommas(s.runs).c_str());
     if (!haveSnapshot(app)) {
         ImGui::TextDisabled(s.error.empty() ? "Waiting for the first batch..." : "%s", s.error.c_str());
         return;
     }
     if (ImGui::BeginTable("##seats", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-        for (const char* h : {"Player", "Win", "Split", "Lose", "Equity", "+/-"}) ImGui::TableSetupColumn(h);
+        for (const char* h : {"Player", "Win", "Split", "Lose", "Equity", s.exact ? "" : "+/-"}) ImGui::TableSetupColumn(h);
         ImGui::TableHeadersRow();
         for (int i = 0; i < app.table.seatCount(); ++i) {
             const bool folded = app.table.seat(i).folded;
@@ -312,8 +313,8 @@ void drawSimulationTab(AppState& app) {
         }
         ImGui::EndTable();
     }
-    if (s.exact) ImGui::TextDisabled("Exact: every one of the %s possible deals was evaluated.", withCommas(s.exactDeals).c_str());
-    ImGui::TextDisabled("Equities of the players still in add up to 100%%.");
+    hintText("Equities of the players still in add up to 100%.");
+    hintText("Speed, threads and the seed are under Settings > Advanced.");
 }
 
 }  // namespace
@@ -341,7 +342,7 @@ void drawEquityPanel(AppState& app) {
         if (ImGui::BeginTabItem("Equity", nullptr, tabFlags(0))) { drawEquityTab(app); ImGui::EndTabItem(); }
         if (ImGui::BeginTabItem("Hands", nullptr, tabFlags(1))) { drawHandsTab(app); ImGui::EndTabItem(); }
         if (ImGui::BeginTabItem("Odds", nullptr, tabFlags(2))) { drawOddsTab(app); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Simulation", nullptr, tabFlags(3))) { drawSimulationTab(app); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Details", nullptr, tabFlags(3))) { drawDetailsTab(app); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::End();

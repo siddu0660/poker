@@ -37,7 +37,8 @@ void usage() {
         "  --advance K         press Next Street K times\n"
         "  --players N         seat count\n"
         "  --fold A,B          fold these seats (1-based)\n"
-        "  --tab N             Equity tab: 0 Equity, 1 Hands, 2 Odds, 3 Simulation\n"
+        "  --tab N             Equity tab: 0 Equity, 1 Hands, 2 Odds, 3 Details\n"
+        "  --settings-tab N    Settings tab: 0 Controls, 1 Advanced\n"
         "  --seed N            fixed simulation seed\n"
         "  --theme T           classic or flat\n"
         "  --drop FILE         inject a file drop onto the window\n"
@@ -108,6 +109,7 @@ int main(int argc, char** argv) {
         else if (a == "--advance") ok = parseNumber(value, opt.advanceStreets);
         else if (a == "--players") ok = parseNumber(value, opt.players);
         else if (a == "--tab") ok = parseNumber(value, opt.tab);
+        else if (a == "--settings-tab") ok = parseNumber(value, opt.settingsTab);
         else if (a == "--seed") { ok = parseNumber(value, opt.seed); opt.fixedSeed = ok; }
         else if (a == "--size") ok = parseSize(value, opt.width, opt.height);
         else if (a == "--fold") ok = parseSeatList(value, opt.foldSeats);

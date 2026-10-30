@@ -15,7 +15,8 @@ struct AppOptions {
     int maxFrames = 0;
     int advanceStreets = 0;       // press Next Street this many times, 30 frames apart
     int players = 0;              // set the seat count (0 = leave)
-    int tab = -1;                 // Equity panel tab to show: 0 Equity, 1 Hands, 2 Odds, 3 Simulation
+    int tab = -1;                 // Equity panel tab to show: 0 Equity, 1 Hands, 2 Odds, 3 Details
+    int settingsTab = -1;         // Settings panel tab to show: 0 Controls, 1 Advanced
     std::vector<int> foldSeats;   // seats to fold (1-based)
     int theme = -1;               // 0 classic felt, 1 flat modern (-1 = saved setting)
     std::string dialog;           // open this dialog at start: import, export, csv, about, shortcuts

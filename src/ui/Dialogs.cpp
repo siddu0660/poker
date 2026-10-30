@@ -128,7 +128,7 @@ void aboutBody(bool& close) {
     ImGui::TextDisabled("Dear ImGui %s", IMGUI_VERSION);
     ImGui::TextDisabled("ImPlot %s", IMPLOT_VERSION);
     ImGui::TextDisabled("SDL %d.%d.%d", sdl.major, sdl.minor, sdl.patch);
-    ImGui::TextDisabled("%d simulation threads available", hardwareThreads());
+    ImGui::TextDisabled("%d threads available for estimates", hardwareThreads());
     ImGui::Spacing();
     if (ImGui::Button("Close")) close = true;
 }
@@ -138,8 +138,8 @@ void shortcutsBody(bool& close) {
     static const Row rows[] = {
         {"F2", "New hand"},
         {"F3", "Next street"},
-        {"F4", "Pause or resume the simulation"},
-        {"F5", "Restart the simulation"},
+        {"F4", "Pause or resume the calculation"},
+        {"F5", "Restart the calculation"},
         {"Ctrl+O", "Import rules"},
         {"Ctrl+S", "Export the draft rules"},
         {"Ctrl+E", "Export the equity history (CSV)"},

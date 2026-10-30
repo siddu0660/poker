@@ -344,15 +344,32 @@ double Snapshot::winCI95(int s) const {
     const double p = win(s);
     return 1.96 * std::sqrt(p * (1.0 - p) / static_cast<double>(runs));
 }
-double Snapshot::equityCI95(int s) const {
-    if (exact) return 0.0;
+namespace {
+// 95% half-width of a seat's equity from its sample variance.
+double equityHalfWidth(const SeatTally& st, std::uint64_t runs) {
     if (runs < 2) return 1.0;
     const auto n = static_cast<double>(runs);
-    const auto& st = seats[static_cast<std::size_t>(s)];
     const double mean = static_cast<double>(st.equity) / n / kEquityUnits;
     const double meanSq = static_cast<double>(st.equitySq) / n / (kEquityUnits * kEquityUnits);
     const double var = std::max(0.0, meanSq - mean * mean) * n / (n - 1.0);
     return 1.96 * std::sqrt(var / n);
+}
+}  // namespace
+
+double Snapshot::equityCI95(int s) const {
+    if (exact) return 0.0;
+    return equityHalfWidth(seats[static_cast<std::size_t>(s)], runs);
+}
+double Snapshot::worstCI95() const {
+    if (exact) return 0.0;
+    double worst = 0.0;
+    bool any = false;
+    for (std::size_t i = 0; i < seats.size(); ++i) {
+        if (!active[i]) continue;
+        worst = std::max(worst, equityHalfWidth(seats[i], runs));
+        any = true;
+    }
+    return any ? worst : 1.0;
 }
 double Snapshot::handShare(int s, HandType t) const {
     return ratio(seats[static_cast<std::size_t>(s)].hands[static_cast<std::size_t>(t)], runs);
@@ -433,12 +450,11 @@ void SimEngine::setPaused(bool p) {
     cv_.notify_all();
 }
 
-void SimEngine::setAutoStop(int heroSeat, double halfWidth) {
+void SimEngine::setAutoStop(double halfWidth) {
     {
         std::lock_guard lock(mu_);
-        heroSeat_ = heroSeat;
         autoStopHalfWidth_ = halfWidth;
-        if (halfWidth <= 0) autoStopped_ = false;
+        autoStopped_ = false;  // re-judged after the next batch, so a tighter target resumes sampling
         ++wake_;
     }
     cv_.notify_all();
@@ -551,18 +567,15 @@ void SimEngine::loop() {
             runsPerSec_ = static_cast<double>(windowRuns_) / sinceWindow;
         }
 
-        if (autoStopHalfWidth_ > 0 && heroSeat_ >= 0 &&
-            heroSeat_ < static_cast<int>(scenario->seats.size()) &&
-            scenario->seats[static_cast<std::size_t>(heroSeat_)].active && totals_.runs >= 1000) {
-            Snapshot snap;
-            snap.runs = totals_.runs;
-            snap.seats.assign(totals_.seats.begin(), totals_.seats.end());
-            const double hw = snap.equityCI95(heroSeat_);
-            if (hw <= autoStopHalfWidth_) {
+        if (autoStopHalfWidth_ > 0 && totals_.runs >= 1000) {
+            double worst = 0.0;
+            for (std::size_t i = 0; i < scenario->seats.size(); ++i)
+                if (scenario->seats[i].active) worst = std::max(worst, equityHalfWidth(totals_.seats[i], totals_.runs));
+            if (worst <= autoStopHalfWidth_) {
                 autoStopped_ = true;
                 char line[160];
-                std::snprintf(line, sizeof line, "[Simulation] Auto-stopped at %s runs: equity +-%.2f%%",
-                              withCommas(totals_.runs).c_str(), hw * 100.0);
+                std::snprintf(line, sizeof line, "[Simulation] Settled at %s runs: every equity within +-%.2f%%",
+                              withCommas(totals_.runs).c_str(), worst * 100.0);
                 Log::instance().add(LogLevel::Sim, line);
                 continue;
             }

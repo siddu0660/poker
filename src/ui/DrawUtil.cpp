@@ -132,6 +132,12 @@ void bigText(const char* text, float scale, ImU32 color) {
     ImGui::SetWindowFontScale(1.0f);
 }
 
+void hintText(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+}
+
 std::string percent(double fraction, int decimals) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "%.*f%%", decimals, fraction * 100.0);

@@ -203,6 +203,12 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
 - An enumeration is cancelled as soon as the scenario changes (an atomic flag polled per work item), so a new click never waits for a stale result.
 - Typical sizes: heads-up with both hands known, preflop 1,712,304 deals; hero against one random hand, flop 1,070,190 and turn 45,540; river against two random hands 893,970. Preflop against a random hand (about 2.1 billion) is sampled.
 
+### 5.4.2 How the numbers are presented (decided after B3)
+Sampling is an implementation detail, so the UI speaks in terms of the result:
+- **Exact** ("Exact: every one of N deals counted"): few enough deals to count; readouts say "exact", intervals are 0, and nothing runs afterwards.
+- **Estimating / settled** ("Estimating, currently ±0.31%" then "Estimate settled, ±0.05%"): too many deals to count. The estimate **settles** once *every* player still in is within the precision target (default ±0.05%, about 4M random deals, a few seconds) and the CPU goes idle. A tighter target, or "Keep refining estimates", resumes it. Folded seats never hold it open.
+- **Advanced** (Settings tab) holds what only matters for tuning: deals per second, threads, seed, statistics, benchmark. The Equity panel's old "Simulation" tab is now "Details" (method, per-seat numbers). The per-second throughput lines are hidden in the Console by default (level Sim).
+
 ### 5.5 Hand analysis (current hand, outs, draws)
 Implemented in `core/HandAnalysis`: `analyzeMadeHand`, `exactFinalDistribution`, `analyzeHand`, `reachShares`. Decisions made in M5:
 - **Outs** for a row are the unseen cards after which the hero's best hand is *that type or better* (so a flush draw gives 9 flush outs, an open-ended draw 8 straight outs). Rows the hero already holds show no outs. Outs are only given on the flop and turn (the next card).

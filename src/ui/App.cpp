@@ -158,8 +158,8 @@ void drawMenuBar(AppState& app) {
     if (ImGui::BeginMenu("Game")) {
         if (ImGui::MenuItem("New Hand", "F2")) app.newHand();
         if (ImGui::MenuItem("Next Street", "F3", false, app.table.street() != Street::River)) app.nextStreet();
-        if (ImGui::MenuItem(app.paused ? "Resume Simulation" : "Pause Simulation", "F4")) app.setPaused(!app.paused);
-        if (ImGui::MenuItem("Restart Simulation", "F5")) app.restart();
+        if (ImGui::MenuItem(app.paused ? "Resume Calculation" : "Pause Calculation", "F4")) app.setPaused(!app.paused);
+        if (ImGui::MenuItem("Restart Calculation", "F5")) app.restart();
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
@@ -332,6 +332,7 @@ int runApp(const AppOptions& opt) {
         if (opt.theme >= 0) app.theme = opt.theme == 1 ? Theme::FlatModern : Theme::ClassicFelt;
         app.dialog = dialogFromName(opt.dialog);
         app.forceTab = opt.tab;
+        app.forceSettingsTab = opt.settingsTab;
         if (opt.fixedSeed) app.setSeed(true, opt.seed);
         if (opt.players > 0) app.setSeatCount(opt.players);
         for (int seat : opt.foldSeats)

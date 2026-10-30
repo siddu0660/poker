@@ -92,6 +92,7 @@ struct Snapshot {
     double equity(int seat) const;
     double winCI95(int seat) const;     // half-width, Bernoulli (0 when exact)
     double equityCI95(int seat) const;  // half-width, from the sample variance (0 when exact)
+    double worstCI95() const;           // the widest equityCI95 among the players still in
     double handShare(int seat, HandType t) const;
 };
 
@@ -109,9 +110,10 @@ public:
     void setTargetRate(double runsPerSec);  // <= 0: unlimited
     void setThreads(int n);                // <= 0: all cores
     void setPaused(bool paused);
-    // Pause once the hero's equity CI half-width is at or below `halfWidth`
-    // (a fraction, 0.005 = +-0.5%). halfWidth <= 0 turns it off.
-    void setAutoStop(int heroSeat, double halfWidth);
+    // Stop sampling ("settled") once every player still in has an equity CI
+    // half-width at or below `halfWidth` (a fraction, 0.0005 = +-0.05%).
+    // halfWidth <= 0 turns it off. A tighter target resumes a settled estimate.
+    void setAutoStop(double halfWidth);
     // When a scenario has at most `maxDeals` distinct deals, enumerate them all
     // once (exact) instead of sampling. Restarts the current scenario.
     void setExactMode(bool allowed, std::uint64_t maxDeals = kDefaultExactDeals);
@@ -140,7 +142,6 @@ private:
     int threads_ = 0;
     bool paused_ = false;
     bool autoStopped_ = false;
-    int heroSeat_ = 0;
     double autoStopHalfWidth_ = 0;
 
     bool exactAllowed_ = true;

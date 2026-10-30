@@ -12,8 +12,7 @@ Real-time poker odds for 2–6 players. A parallel Monte Carlo engine and an exa
 
 ## What it does
 
-- **Live equity** (win / split / lose, with 95% confidence intervals) for every player, updating while the simulation runs. The simulation never blocks the window.
-- **Exact results when possible**: when there are at most 10 million possible deals (for example heads-up from the flop on, or any spot where every hand is known), every deal is evaluated and the numbers are exact instead of estimates.
+- **Live equity** (win / split / lose) for every player. When there are at most 10 million possible deals (for example heads-up from the flop on, or any spot where every hand is known), every deal is counted and the numbers are **exact**. Otherwise, such as preflop against unknown hands, they are **estimated** from random deals, shown with a ± margin, and the estimate **settles** by itself at ±0.05% so nothing keeps running. The window is never blocked either way.
 - **Exact hand evaluation** for any rule set, including wild cards (deuces, jokers, one-eyed jacks), short deck and custom hand-ranking orders. About 50 million 7-card hands per second per core for standard rules.
 - **Your hand and your outs**: the best hand you hold and the five cards that make it, the exact chance of finishing as each hand type once the flop is out, the cards that get you there ("any Ten or Seven"), and flush, straight, overcard and set draws.
 - **Custom rules** edited live in the Rules panel (Apply / Revert), or loaded from JSON.
@@ -45,10 +44,10 @@ The window has five panels that you can drag, tab and resize; **View ▸ Reset L
 
 | Panel | What it does |
 |---|---|
-| Settings & Controls | Restart, pause, import rules, simulation speed (1k to 20M runs/s, or unlimited), threads, fixed seed, auto-stop once the hero's equity is known to ±x%, benchmark |
+| Settings & Controls | **Controls**: restart, pause, import rules, whether to count every deal when possible, how precise an estimate must be before it settles, and a one-line status ("Exact: every one of 45,540 deals counted" or "Estimate settled, ±0.05%"). **Advanced**: speed of the random deals (1k to 20M per second, or unlimited), threads, fixed seed, statistics, benchmark |
 | Custom Rules | Deck size, blinds, ante, stack, jokers, which hand types count and in what order, wild cards, betting structure with a raise preview, presets |
 | Table & Players | The table. Click a seat to fold or rejoin; right-click for known or random cards and "set as hero". **New Hand** and **Next Street** deal and reveal |
-| Odds & Equity | Equity readouts and chart, your hand and outs, pot odds, per-player results |
+| Odds & Equity | Equity readouts and chart, your hand and outs (Hands), pot odds (Odds), per-player results and how they were computed (Details) |
 | Console | Everything the app did, filterable, with Copy and Clear |
 
 Opponents start as **random hands**, so your equity is against a random holding. Mark a seat's cards as *known* in its right-click menu to see equity against those exact cards. On the river everyone turns their cards over and the winner is highlighted.
@@ -63,7 +62,7 @@ Opponents start as **random hands**, so your equity is against a random holding.
 | macOS | `~/Library/Application Support/PokerForge/PokerForge/` |
 | Windows | `%APPDATA%\PokerForge\PokerForge\` |
 
-It holds `imgui.ini` (window layout), `settings.json` (theme, speed, threads, seed, auto-stop, exact mode) and `exports/` (the default place for CSV exports). Rule presets are the JSON files in the `rules` folder next to the executable.
+It holds `imgui.ini` (window layout), `settings.json` (theme, speed, threads, seed, precision, exact mode) and `exports/` (the default place for CSV exports). Rule presets are the JSON files in the `rules` folder next to the executable.
 
 ### Rules files
 
@@ -107,7 +106,7 @@ pokerforge --frames 120 --players 6 --advance 2 --seed 7 --tab 1 --theme flat \
            --screenshot shot.ppm        # runs unattended, then exits
 ```
 
-`--press` and `--drop` send real SDL events, so they test the same code paths as a keyboard and a file drag. Scripted runs never read or write your saved settings (unless you pass `--settings FILE`).
+`--tab` picks the Equity tab and `--settings-tab` the Settings tab. `--press` and `--drop` send real SDL events, so they test the same code paths as a keyboard and a file drag. Scripted runs never read or write your saved settings (unless you pass `--settings FILE`).
 
 ## How it is put together
 

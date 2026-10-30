@@ -63,4 +63,7 @@ void bigText(const char* text, float scale, ImU32 color);
 
 std::string percent(double fraction, int decimals = 1);
 
+// Greyed text that wraps to the panel width (ImGui::TextDisabled never wraps).
+void hintText(const char* text);
+
 }  // namespace pf::ui

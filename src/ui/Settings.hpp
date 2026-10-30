@@ -19,7 +19,7 @@ struct UserSettings {
     int threads = 0;  // 0 = every core
     bool fixedSeed = false;
     std::uint64_t seed = 12345;
-    double autoStopPercent = 0.0;
+    double autoStopPercent = 0.05;  // see AppState; the default settles an estimate in a few seconds
     bool exactWhenPossible = true;  // enumerate every deal when there are few enough
 
     bool operator==(const UserSettings&) const = default;

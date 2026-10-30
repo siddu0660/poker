@@ -236,7 +236,7 @@ PF_TEST(sim_engine_lifecycle) {
     CHECK(waitFor([&] { return engine.snapshot().runs > held; }, 10));
 
     // Auto-stop once the hero's equity is known to +-1%.
-    engine.setAutoStop(0, 0.01);
+    engine.setAutoStop(0.01);
     CHECK(waitFor([&] { return engine.snapshot().autoStopped; }, 20));
     const Snapshot stopped = engine.snapshot();
     CHECK(stopped.equityCI95(0) <= 0.01);
@@ -302,6 +302,36 @@ PF_TEST(sim_engine_exact_is_cancelled_by_a_new_scenario) {
     const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     CHECK(secs < 5.0);
     CHECK_EQ(engine.snapshot().runs, 44u);
+}
+
+PF_TEST(sim_engine_settles_on_every_players_precision) {
+    SimEngine engine;
+    engine.setExactMode(false);
+    engine.setAutoStop(0.004);  // +-0.4%
+    Scenario s;
+    s.evaluator = std::make_shared<const Evaluator>(RuleSet{});
+    s.seats.resize(4);
+    s.seats[0].active = false;  // a folded seat must not hold the estimate open
+    engine.setScenario(s);
+    CHECK(waitFor([&] { return engine.snapshot().autoStopped; }, 30));
+    const Snapshot a = engine.snapshot();
+    CHECK(a.worstCI95() <= 0.004);
+    for (int i = 0; i < 4; ++i)
+        if (a.active[static_cast<std::size_t>(i)]) CHECK(a.equityCI95(i) <= 0.004);
+    CHECK(a.worstCI95() > 0.0);  // it is an estimate, not a count
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    CHECK_EQ(engine.snapshot().runs, a.runs);  // settled: nothing more runs
+
+    engine.setAutoStop(0.002);  // a tighter target resumes the same estimate
+    CHECK(waitFor([&] { return engine.snapshot().runs > a.runs; }, 10));
+    CHECK(waitFor([&] { return engine.snapshot().autoStopped; }, 30));
+    CHECK(engine.snapshot().worstCI95() <= 0.002);
+    CHECK(engine.snapshot().runs > a.runs);
+
+    engine.setAutoStop(0.0);  // off: keeps refining indefinitely
+    const auto settled = engine.snapshot().runs;
+    CHECK(waitFor([&] { return engine.snapshot().runs > settled + 5000; }, 10));
+    CHECK(!engine.snapshot().autoStopped);
 }
 
 PF_TEST(sim_engine_rate_limit) {
