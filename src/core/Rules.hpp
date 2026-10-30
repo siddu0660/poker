@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "core/Cards.hpp"
+
 namespace pf {
 
 enum class HandType : std::uint8_t {
@@ -63,6 +65,9 @@ struct RuleSet {
 
     bool operator==(const RuleSet&) const = default;
 };
+
+// All cards in play under these rules (natural ranks in the deck, then jokers).
+std::vector<CardId> deckFor(const RuleSet& rules);
 
 std::vector<HandType> standardOrder();   // 52-card hold'em ranking
 std::vector<HandType> shortDeckOrder();  // flush > full house, trips > straight

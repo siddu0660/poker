@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(PF_BUILD_UI "Build the Dear ImGui front end" OFF)
+option(PF_BUILD_UI "Build the Dear ImGui front end" ON)
 option(PF_BUILD_TESTS "Build unit tests" ON)
 option(PF_NATIVE_ARCH "Compile with -march=native" OFF)
 option(PF_ENABLE_LTO "Enable LTO in Release" ON)
@@ -50,8 +50,10 @@ check_ipo_supported(RESULT PF_IPO_OK OUTPUT PF_IPO_MSG)
 add_library(pokercore STATIC
   src/core/Rules.cpp
   src/core/Evaluator.cpp
+  src/core/HandAnalysis.cpp
   src/util/Log.cpp
   src/engine/Simulator.cpp
+  src/engine/TableState.cpp
   src/engine/Benchmark.cpp
 )
 target_include_directories(pokercore PUBLIC src)
@@ -70,6 +72,11 @@ if(PF_ENABLE_LTO AND PF_IPO_OK AND PF_LTO_COMPILER_OK)
   set_property(TARGET pokercore PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 endif()
 
+# The state behind the UI panels: no ImGui or SDL, so it is built (and tested) everywhere.
+add_library(pokerapp STATIC src/ui/AppState.cpp)
+target_include_directories(pokerapp PUBLIC src)
+target_link_libraries(pokerapp PUBLIC pokercore PRIVATE pf_options)
+
 # Rules JSON is found relative to the executable, not the working directory.
 file(GLOB PF_RULE_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/rules/*.json)
 
@@ -79,5 +86,19 @@ if(PF_BUILD_TESTS)
 endif()
 
 if(PF_BUILD_UI)
-  message(STATUS "PF_BUILD_UI requested: UI target is added in milestone M6")
+  add_executable(pokerforge
+    src/main.cpp
+    src/ui/App.cpp
+    src/ui/DrawUtil.cpp
+    src/ui/SettingsPanel.cpp
+    src/ui/RulesPanel.cpp
+    src/ui/TablePanel.cpp
+    src/ui/EquityPanel.cpp
+    src/ui/ConsolePanel.cpp)
+  target_link_libraries(pokerforge PRIVATE pokerapp implot_lib pf_options)
+  target_compile_definitions(pokerforge PRIVATE PF_SOURCE_RULES_DIR="${CMAKE_SOURCE_DIR}/rules")
+  # Rules are found next to the executable, so ship them beside it.
+  add_custom_command(TARGET pokerforge POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/rules $<TARGET_FILE_DIR:pokerforge>/rules
+    COMMENT "Copying rules next to pokerforge")
 endif()

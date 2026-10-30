@@ -17,14 +17,6 @@ namespace pf {
 
 using Clock = std::chrono::steady_clock;
 
-std::vector<CardId> deckFor(const RuleSet& rules) {
-    std::vector<CardId> deck;
-    for (int s = 0; s < kSuits; ++s)
-        for (int r = rules.minRank(); r < kRanks; ++r) deck.push_back(makeCard(s, r));
-    for (int j = 0; j < rules.jokers && j < 2; ++j) deck.push_back(static_cast<CardId>(kJokerA + j));
-    return deck;
-}
-
 std::string validateScenario(const Scenario& s) {
     if (!s.evaluator) return "No rules loaded";
     if (s.seats.empty() || s.seats.size() > kMaxSeats)
@@ -357,9 +349,8 @@ void SimEngine::loop() {
             windowStart_ = t1;
             windowRuns_ = 0;
             windowComputeMs_ = 0;
-        } else if (runsPerSec_ == 0) {
-            const double since = std::chrono::duration<double>(t1 - epochStart_).count();
-            if (since > 0) runsPerSec_ = static_cast<double>(totals_.runs) / since;
+        } else if (sinceWindow >= 0.1 || runsPerSec_ == 0) {  // a running estimate until the first full second is in
+            runsPerSec_ = static_cast<double>(windowRuns_) / sinceWindow;
         }
 
         if (autoStopHalfWidth_ > 0 && heroSeat_ >= 0 &&

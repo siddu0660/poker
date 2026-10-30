@@ -31,9 +31,6 @@ struct Scenario {
     std::uint64_t seed = 1;
 };
 
-// All cards in play under these rules (natural ranks in the deck, then jokers).
-std::vector<CardId> deckFor(const RuleSet& rules);
-
 // Empty string when the scenario can be simulated, otherwise the reason it can't.
 std::string validateScenario(const Scenario& s);
 

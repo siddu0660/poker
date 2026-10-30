@@ -15,11 +15,11 @@ jobs:
 
       - name: Install Ninja (macOS)
         if: runner.os == 'macOS'
-        run: brew install ninja libomp
+        run: brew install ninja libomp sdl2
 
       - name: Install Ninja (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsdl2-dev libgl-dev xvfb
 
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
@@ -49,6 +49,16 @@ jobs:
       - name: Test
         shell: bash
         run: ctest --preset "$PRESET"
+
+      # Open the real window on a virtual display for a few seconds of frames.
+      - name: UI smoke run (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run -a -s "-screen 0 1600x900x24" \
+            build/linux-release/pokerforge --frames 120 --advance 3 --players 6 --seed 1 \
+            --screenshot "$RUNNER_TEMP/ui.ppm"
+          test -s "$RUNNER_TEMP/ui.ppm"
 
       # Throughput varies across runners, so the benchmark reports but never fails the build.
       - name: Benchmark
