@@ -1,6 +1,7 @@
 #include "test_main.hpp"
 #include "ui/AppState.hpp"
 #include "ui/Export.hpp"
+#include "util/Paths.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -29,6 +30,12 @@ bool pump(AppState& app, std::uint64_t minRuns, double seconds = 20) {
 }
 
 AppState makeApp() { return AppState(PF_RULES_DIR); }
+
+// Test clean-up must never fail a test, so use the overload that reports instead of throwing.
+void removeQuietly(const std::filesystem::path& p) {
+    std::error_code ec;
+    std::filesystem::remove_all(p, ec);
+}
 
 }  // namespace
 
@@ -131,12 +138,12 @@ PF_TEST(app_import_and_export_rules) {
     AppState other = makeApp();
     CHECK(other.importRules(out.string()));
     CHECK(other.draft == app.draft);
-    std::filesystem::remove(out);
+    removeQuietly(out);
 
     const auto bad = std::filesystem::temp_directory_path() / "pokerforge_test_bad.json";
     { std::ofstream(bad) << "{ not json"; }
     CHECK(!other.importRules(bad.string()));
-    std::filesystem::remove(bad);
+    removeQuietly(bad);
 }
 
 PF_TEST(app_table_changes_restart_the_simulation) {
@@ -269,11 +276,13 @@ PF_TEST(app_equity_csv_export) {
 
     const auto path = std::filesystem::temp_directory_path() / "pokerforge_test_csv" / "equity.csv";
     CHECK(app.exportEquityCsv(path.string()));
-    std::ifstream in(path);
-    std::string firstLine;
-    std::getline(in, firstLine);
-    CHECK_EQ(firstLine, std::string("hand,street,Player 1,Player 2,Player 3"));
-    std::filesystem::remove_all(path.parent_path());
+    {
+        std::ifstream in(path);  // closed before cleanup: Windows cannot delete an open file
+        std::string firstLine;
+        std::getline(in, firstLine);
+        CHECK_EQ(firstLine, std::string("hand,street,Player 1,Player 2,Player 3"));
+    }
+    removeQuietly(path.parent_path());
 
     AppState empty = makeApp();
     empty.newHand();  // history is cleared
@@ -303,7 +312,7 @@ PF_TEST(app_dropped_files) {
     CHECK(app.exportDraft(upper.string()));
     AppState other = makeApp();
     CHECK(other.handleDroppedFile(upper.string()));  // the extension check ignores case
-    std::filesystem::remove(upper);
+    removeQuietly(upper);
 }
 
 PF_TEST(app_default_export_paths) {
@@ -367,5 +376,42 @@ PF_TEST(settings_save_load_and_apply_to_the_app) {
     CHECK(app.theme == Theme::FlatModern);
     CHECK_EQ(app.targetRate, 40000.0);
     CHECK(app.fixedSeed);
-    std::filesystem::remove_all(path.parent_path());
+    removeQuietly(path.parent_path());
+}
+
+// Every file path goes through UTF-8. On Windows the old narrow conversions used
+// the ANSI code page and threw on characters like these; elsewhere this guards the round trip.
+PF_TEST(app_paths_with_non_ascii_folders) {
+    const std::string dirUtf8 = pathToUtf8(std::filesystem::temp_directory_path() / "pokerforge_\xE6\xB5\x8B\xE8\xAF\x95_\xCE\xA9");
+    const auto dir = pathFromUtf8(dirUtf8);
+    CHECK(pathToUtf8(dir) == dirUtf8);
+    removeQuietly(dir);
+    std::filesystem::create_directories(dir);
+    for (const char* f : {"texas_holdem.json", "short_deck_36.json"})
+        std::filesystem::copy_file(pathFromUtf8(std::string(PF_RULES_DIR) + "/" + f), dir / f);
+
+    AppState app(dirUtf8);
+    CHECK_EQ(app.applied.name, std::string("Texas Hold'em"));  // loaded from the non-ASCII folder
+    CHECK(std::find(app.presetFiles.begin(), app.presetFiles.end(), "short_deck_36.json") != app.presetFiles.end());
+    CHECK(app.importRules(pathToUtf8(dir / "short_deck_36.json")));
+    CHECK_EQ(app.draft.deckSize, 36);
+    CHECK(app.handleDroppedFile(pathToUtf8(dir / "texas_holdem.json")));
+
+    app.draft.name = "My rules";
+    const std::string rulesOut = app.defaultRulesExportPath();
+    CHECK(rulesOut.rfind(dirUtf8, 0) == 0);  // still under the same folder, byte for byte
+    CHECK(app.exportDraft(rulesOut));
+    CHECK(std::filesystem::exists(pathFromUtf8(rulesOut)));
+
+    app.exportDir = pathToUtf8(dir / "exports");
+    CHECK(pump(app, 500));
+    const std::string csvOut = app.defaultCsvPath();
+    CHECK(app.exportEquityCsv(csvOut));
+    CHECK(std::filesystem::exists(pathFromUtf8(csvOut)));
+
+    UserSettings s;
+    s.theme = Theme::FlatModern;
+    CHECK(saveSettings(s, pathToUtf8(dir / "settings.json")));
+    CHECK(loadSettings(pathToUtf8(dir / "settings.json")) == s);
+    removeQuietly(dir);
 }

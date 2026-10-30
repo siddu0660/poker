@@ -100,6 +100,13 @@ if(PF_BUILD_UI)
     src/ui/EquityPanel.cpp
     src/ui/ConsolePanel.cpp)
   target_link_libraries(pokerforge PRIVATE pokerapp implot_lib pf_options)
+  if(WIN32)
+    # A desktop program: no console window on start. MSVC still enters through main().
+    set_target_properties(pokerforge PROPERTIES WIN32_EXECUTABLE ON)
+    if(MSVC)
+      target_link_options(pokerforge PRIVATE /ENTRY:mainCRTStartup)
+    endif()
+  endif()
   target_compile_definitions(pokerforge PRIVATE PF_SOURCE_RULES_DIR="${CMAKE_SOURCE_DIR}/rules"
                                               PF_VERSION="${PROJECT_VERSION}")
   # Rules are found next to the executable, so ship them beside it.

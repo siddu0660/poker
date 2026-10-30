@@ -7,6 +7,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "util/Paths.hpp"
+
 namespace pf {
 
 using nlohmann::json;
@@ -57,11 +59,6 @@ auto lookupFromKey(const Table& t, std::string_view key) {
     std::optional<std::decay_t<Mode>> out;
     for (const auto& e : t) if (e.key == key) out = e.mode;
     return out;
-}
-
-std::filesystem::path pathFromUtf8(const std::string& s) {
-    return std::filesystem::path(
-        std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
 }
 
 std::string quote(std::string_view s) { return "\"" + std::string(s) + "\""; }

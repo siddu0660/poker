@@ -8,14 +8,11 @@
 #include <nlohmann/json.hpp>
 
 #include "ui/Export.hpp"
+#include "util/Paths.hpp"
 
 namespace pf::ui {
 
 namespace {
-
-std::filesystem::path pathFromUtf8(const std::string& s) {
-    return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
-}
 
 void warn(std::vector<std::string>* w, std::string text) {
     if (w) w->push_back(std::move(text));

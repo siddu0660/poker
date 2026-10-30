@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <fstream>
 
+#include "util/Paths.hpp"
+
 namespace pf::ui {
 
 std::string csvCell(const std::string& text) {
@@ -37,7 +39,7 @@ std::string equityCsv(const TableState& table) {
 }
 
 bool writeTextFile(const std::string& path, const std::string& text, std::string* error) {
-    const auto p = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    const auto p = pathFromUtf8(path);
     std::error_code ec;
     if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
     std::ofstream out(p, std::ios::binary | std::ios::trunc);

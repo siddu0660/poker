@@ -11,6 +11,7 @@
 
 #include "ui/DrawUtil.hpp"
 #include "ui/Panels.hpp"
+#include "util/Paths.hpp"
 
 #ifndef PF_VERSION
 #define PF_VERSION "dev"
@@ -83,8 +84,8 @@ void importBody(AppState& app, bool& close) {
     ImGui::BeginDisabled(!typed && app.presetFiles.empty());
     if (ImGui::Button("Import")) {
         const std::string path = typed ? std::string(d.path)
-                                       : (std::filesystem::path(app.rulesDir) /
-                                          app.presetFiles[static_cast<std::size_t>(d.selected)]).string();
+                                       : pathToUtf8(pathFromUtf8(app.rulesDir) /
+                                                    app.presetFiles[static_cast<std::size_t>(d.selected)]);
         if (app.importRules(path)) close = true;
         else d.message = "Could not import that file. The Console has the reason.";
     }

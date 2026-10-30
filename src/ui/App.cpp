@@ -21,6 +21,7 @@
 #include "ui/AppState.hpp"
 #include "ui/DrawUtil.hpp"
 #include "ui/Panels.hpp"
+#include "util/Paths.hpp"
 
 namespace pf::ui {
 
@@ -70,12 +71,12 @@ std::string executableDir() {
 
 std::string findRulesDir(const std::string& requested) {
     if (!requested.empty()) return requested;
-    const fs::path beside = fs::path(executableDir()) / "rules";
-    if (fs::exists(beside)) return beside.string();
+    const fs::path beside = pathFromUtf8(executableDir()) / "rules";
+    if (fs::exists(beside)) return pathToUtf8(beside);
 #ifdef PF_SOURCE_RULES_DIR
-    if (fs::exists(PF_SOURCE_RULES_DIR)) return PF_SOURCE_RULES_DIR;
+    if (fs::exists(pathFromUtf8(PF_SOURCE_RULES_DIR))) return PF_SOURCE_RULES_DIR;
 #endif
-    return beside.string();
+    return pathToUtf8(beside);
 }
 
 // Left column: Settings over Rules. Centre: Table over Console. Right: Equity.
@@ -294,13 +295,13 @@ int runApp(const AppOptions& opt) {
     // Layout and window positions persist in the user's pref folder.
     static std::string iniPath;
     if (char* pref = SDL_GetPrefPath("PokerForge", "PokerForge")) {
-        iniPath = (fs::path(pref) / "imgui.ini").string();
+        iniPath = pathToUtf8(pathFromUtf8(pref) / "imgui.ini");  // ImGui opens it as UTF-8
         SDL_free(pref);
         io.IniFilename = iniPath.c_str();
     } else {
         io.IniFilename = nullptr;
     }
-    const bool haveSavedLayout = !iniPath.empty() && fs::exists(iniPath) && opt.maxFrames == 0;
+    const bool haveSavedLayout = !iniPath.empty() && fs::exists(pathFromUtf8(iniPath)) && opt.maxFrames == 0;
     if (opt.maxFrames > 0) io.IniFilename = nullptr;  // scripted runs never touch the user's layout
 
     const Scale scale = measureScale(win.window);
@@ -318,8 +319,8 @@ int runApp(const AppOptions& opt) {
         // Settings persist in the user's pref folder; scripted runs neither read nor write them.
         std::string settingsPath;
         if (char* pref = SDL_GetPrefPath("PokerForge", "PokerForge")) {
-            if (opt.maxFrames == 0) settingsPath = (fs::path(pref) / "settings.json").string();
-            app.exportDir = (fs::path(pref) / "exports").string();
+            if (opt.maxFrames == 0) settingsPath = pathToUtf8(pathFromUtf8(pref) / "settings.json");
+            app.exportDir = pathToUtf8(pathFromUtf8(pref) / "exports");
             SDL_free(pref);
         }
         if (!opt.settingsPath.empty()) settingsPath = opt.settingsPath;

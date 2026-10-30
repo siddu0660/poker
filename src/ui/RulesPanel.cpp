@@ -8,6 +8,7 @@
 #include "core/Betting.hpp"
 #include "ui/DrawUtil.hpp"
 #include "ui/Panels.hpp"
+#include "util/Paths.hpp"
 
 namespace pf::ui {
 
@@ -34,7 +35,7 @@ void drawRulesPanel(AppState& app) {
         if (ImGui::IsWindowAppearing()) app.rescanPresets();
         for (const std::string& file : app.presetFiles) {
             if (ImGui::Selectable(file.c_str(), false))
-                app.importRules((std::filesystem::path(app.rulesDir) / file).string());
+                app.importRules(pathToUtf8(pathFromUtf8(app.rulesDir) / file));
         }
         ImGui::EndCombo();
     }

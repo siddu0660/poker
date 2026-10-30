@@ -7,7 +7,25 @@
 
 #include "ui/App.hpp"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace {
+
+// On Windows pokerforge is a GUI program with no console of its own. When it
+// is started from a terminal, print usage and errors there instead.
+void attachParentConsole() {
+#ifdef _WIN32
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE* f = nullptr;
+        freopen_s(&f, "CONOUT$", "w", stdout);
+        freopen_s(&f, "CONOUT$", "w", stderr);
+    }
+#endif
+}
 
 void usage() {
     std::puts(
@@ -59,6 +77,7 @@ bool parseSeatList(std::string_view s, std::vector<int>& out) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    attachParentConsole();
     pf::ui::AppOptions opt;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];

@@ -7,6 +7,7 @@
 #include <random>
 
 #include "ui/Export.hpp"
+#include "util/Paths.hpp"
 
 namespace pf::ui {
 
@@ -40,9 +41,9 @@ AppState::AppState(std::string dir)
     rescanPresets();
 
     RuleSet start;
-    const fs::path holdem = fs::path(rulesDir) / "texas_holdem.json";
+    const fs::path holdem = pathFromUtf8(rulesDir) / "texas_holdem.json";
     if (fs::exists(holdem)) {
-        auto res = loadRulesFile(holdem.string());
+        auto res = loadRulesFile(pathToUtf8(holdem));
         if (res.rules) start = *res.rules;
     }
     applied = start;
@@ -201,9 +202,9 @@ void AppState::pollBenchmark() {
 void AppState::rescanPresets() {
     presetFiles.clear();
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(rulesDir, ec))
+    for (const auto& entry : fs::directory_iterator(pathFromUtf8(rulesDir), ec))
         if (entry.is_regular_file() && entry.path().extension() == ".json")
-            presetFiles.push_back(entry.path().filename().string());
+            presetFiles.push_back(pathToUtf8(entry.path().filename()));
     std::sort(presetFiles.begin(), presetFiles.end());
 }
 
@@ -346,8 +347,9 @@ bool AppState::exportEquityCsv(const std::string& path) {
 }
 
 bool AppState::handleDroppedFile(const std::string& path) {
-    if (lowerCase(std::filesystem::path(path).extension().string()) != ".json") {
-        logWarn("[Engine] Ignored the dropped file \"" + std::filesystem::path(path).filename().string() +
+    const fs::path p = pathFromUtf8(path);
+    if (lowerCase(pathToUtf8(p.extension())) != ".json") {
+        logWarn("[Engine] Ignored the dropped file \"" + pathToUtf8(p.filename()) +
                 "\": only .json rules files can be imported");
         return false;
     }
@@ -358,12 +360,12 @@ bool AppState::handleDroppedFile(const std::string& path) {
 
 std::string AppState::defaultRulesExportPath() const {
     const std::string file = fileSafe(draft.name) + ".json";
-    return (std::filesystem::path(rulesDir) / file).string();
+    return pathToUtf8(pathFromUtf8(rulesDir) / file);
 }
 
 std::string AppState::defaultCsvPath() const {
     const std::string file = "equity_hand_" + std::to_string(table.handNumber()) + ".csv";
-    return (exportDir.empty() ? std::filesystem::path(file) : std::filesystem::path(exportDir) / file).string();
+    return exportDir.empty() ? file : pathToUtf8(pathFromUtf8(exportDir) / file);
 }
 
 }  // namespace pf::ui
