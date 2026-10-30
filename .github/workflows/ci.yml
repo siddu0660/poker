@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja libomp
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   preset=linux-release ;;
+            macOS)   preset=macos-release ;;
+            Windows) preset=windows-release ;;
+          esac
+          echo "PRESET=$preset" >> "$GITHUB_ENV"
+          extra=""
+          if [ "${{ runner.os }}" = "macOS" ]; then extra="-DOpenMP_ROOT=$(brew --prefix libomp)"; fi
+          cmake --preset "$preset" -DPF_WARNINGS_AS_ERRORS=ON $extra
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset "$PRESET"
+
+      - name: Test
+        shell: bash
+        run: ctest --preset "$PRESET"
