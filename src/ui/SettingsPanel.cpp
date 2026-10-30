@@ -141,7 +141,7 @@ void drawSettingsPanel(AppState& app) {
     ImGui::PopStyleColor();
     ImGui::Text("Runs: %s", withCommas(s.runs).c_str());
     ImGui::Text("Speed: %s runs/s", shortCount(s.runsPerSec).c_str());
-    ImGui::Text("Last batch: %s runs in %.1f ms", shortCount(F(s.lastBatchRuns)).c_str(), static_cast<double>(s.lastBatchMs));
+    ImGui::Text("Last batch: %s runs in %.1f ms", shortCount(static_cast<double>(s.lastBatchRuns)).c_str(), static_cast<double>(s.lastBatchMs));
 
     // ---- benchmark
     ImGui::SeparatorText("Benchmark");

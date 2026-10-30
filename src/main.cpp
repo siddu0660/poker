@@ -1,7 +1,8 @@
+#include <charconv>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <string>
+#include <string_view>
+#include <system_error>
 
 #include "ui/App.hpp"
 
@@ -22,27 +23,53 @@ void usage() {
         "  --screenshot FILE   write the last frame as a binary PPM");
 }
 
+// Whole-string number parsing that needs no CRT functions MSVC calls unsafe.
+template <class T>
+bool parseNumber(std::string_view s, T& out) {
+    const char* end = s.data() + s.size();
+    const auto r = std::from_chars(s.data(), end, out);
+    return r.ec == std::errc{} && r.ptr == end;
+}
+
+bool parseSize(std::string_view s, int& w, int& h) {
+    const auto x = s.find('x');
+    return x != std::string_view::npos && parseNumber(s.substr(0, x), w) && parseNumber(s.substr(x + 1), h) &&
+           w > 0 && h > 0;
+}
+
+bool parseSeatList(std::string_view s, std::vector<int>& out) {
+    while (!s.empty()) {
+        const auto comma = s.find(',');
+        int seat = 0;
+        if (!parseNumber(s.substr(0, comma), seat)) return false;
+        out.push_back(seat);
+        if (comma == std::string_view::npos) break;
+        s.remove_prefix(comma + 1);
+    }
+    return true;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     pf::ui::AppOptions opt;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
-        const bool hasValue = i + 1 < argc;
         if (a == "--help" || a == "-h") { usage(); return 0; }
-        else if (a == "--rules-dir" && hasValue) opt.rulesDir = argv[++i];
-        else if (a == "--frames" && hasValue) opt.maxFrames = std::atoi(argv[++i]);
-        else if (a == "--advance" && hasValue) opt.advanceStreets = std::atoi(argv[++i]);
-        else if (a == "--players" && hasValue) opt.players = std::atoi(argv[++i]);
-        else if (a == "--fold" && hasValue) {
-            for (char* tok = std::strtok(argv[++i], ","); tok; tok = std::strtok(nullptr, ",")) opt.foldSeats.push_back(std::atoi(tok));
-        }
-        else if (a == "--tab" && hasValue) opt.tab = std::atoi(argv[++i]);
-        else if (a == "--seed" && hasValue) { opt.fixedSeed = true; opt.seed = std::strtoull(argv[++i], nullptr, 10); }
-        else if (a == "--screenshot" && hasValue) opt.screenshotPath = argv[++i];
-        else if (a == "--size" && hasValue) {
-            if (std::sscanf(argv[++i], "%dx%d", &opt.width, &opt.height) != 2) { usage(); return 2; }
-        } else { usage(); return 2; }
+        if (i + 1 >= argc) { usage(); return 2; }
+        const std::string_view value = argv[++i];
+        bool ok = true;
+        if (a == "--rules-dir") opt.rulesDir = std::string(value);
+        else if (a == "--screenshot") opt.screenshotPath = std::string(value);
+        else if (a == "--frames") ok = parseNumber(value, opt.maxFrames);
+        else if (a == "--advance") ok = parseNumber(value, opt.advanceStreets);
+        else if (a == "--players") ok = parseNumber(value, opt.players);
+        else if (a == "--tab") ok = parseNumber(value, opt.tab);
+        else if (a == "--seed") { ok = parseNumber(value, opt.seed); opt.fixedSeed = ok; }
+        else if (a == "--size") ok = parseSize(value, opt.width, opt.height);
+        else if (a == "--fold") ok = parseSeatList(value, opt.foldSeats);
+        else ok = false;
+        if (!ok) { usage(); return 2; }
     }
     return pf::ui::runApp(opt);
 }

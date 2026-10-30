@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -278,7 +279,7 @@ void drawSimulationTab(AppState& app) {
     const Snapshot& s = app.snap;
     ImGui::Text("Runs: %s    Speed: %s runs/s    Epoch: %llu", withCommas(s.runs).c_str(),
                 shortCount(s.runsPerSec).c_str(), static_cast<unsigned long long>(s.epoch));
-    ImGui::Text("Last batch: %s runs in %.1f ms", shortCount(F(s.lastBatchRuns)).c_str(), static_cast<double>(s.lastBatchMs));
+    ImGui::Text("Last batch: %s runs in %.1f ms", shortCount(static_cast<double>(s.lastBatchRuns)).c_str(), static_cast<double>(s.lastBatchMs));
     if (!haveSnapshot(app)) {
         ImGui::TextDisabled(s.error.empty() ? "Waiting for the first batch..." : "%s", s.error.c_str());
         return;
