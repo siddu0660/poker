@@ -5,6 +5,7 @@ add_executable(pokercore_tests
   test_evaluator.cpp
   test_wild.cpp
   test_simulator.cpp
+  test_exact.cpp
   test_analysis.cpp
   test_table.cpp
   test_appstate.cpp

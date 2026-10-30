@@ -13,6 +13,7 @@ Real-time poker odds for 2–6 players. A parallel Monte Carlo engine and an exa
 ## What it does
 
 - **Live equity** (win / split / lose, with 95% confidence intervals) for every player, updating while the simulation runs. The simulation never blocks the window.
+- **Exact results when possible**: when there are at most 10 million possible deals (for example heads-up from the flop on, or any spot where every hand is known), every deal is evaluated and the numbers are exact instead of estimates.
 - **Exact hand evaluation** for any rule set, including wild cards (deuces, jokers, one-eyed jacks), short deck and custom hand-ranking orders. About 50 million 7-card hands per second per core for standard rules.
 - **Your hand and your outs**: the best hand you hold and the five cards that make it, the exact chance of finishing as each hand type once the flop is out, the cards that get you there ("any Ten or Seven"), and flush, straight, overcard and set draws.
 - **Custom rules** edited live in the Rules panel (Apply / Revert), or loaded from JSON.
@@ -62,7 +63,7 @@ Opponents start as **random hands**, so your equity is against a random holding.
 | macOS | `~/Library/Application Support/PokerForge/PokerForge/` |
 | Windows | `%APPDATA%\PokerForge\PokerForge\` |
 
-It holds `imgui.ini` (window layout), `settings.json` (theme, speed, threads, seed, auto-stop) and `exports/` (the default place for CSV exports). Rule presets are the JSON files in the `rules` folder next to the executable.
+It holds `imgui.ini` (window layout), `settings.json` (theme, speed, threads, seed, auto-stop, exact mode) and `exports/` (the default place for CSV exports). Rule presets are the JSON files in the `rules` folder next to the executable.
 
 ### Rules files
 
@@ -125,7 +126,7 @@ The core library has no UI dependency. One thread owns the UI state and hands th
 
 - `ctest --preset linux-release` runs 80+ unit tests in a few seconds.
 - The evaluator is checked against a separate brute-force implementation (every 5-card subset, every wild substitution) on random hands and random rule sets, and against exact enumeration: all 133,784,560 seven-card hands and all 2,598,960 deuces-wild five-card hands. These are slow, so they run on demand: `ctest --preset linux-release -C Exhaustive -L exhaustive`.
-- Simulated equity is checked against exact enumeration of every board.
+- Simulated equity is checked against exact enumeration of every board, and the exact mode is checked deal for deal against independent brute-force loops (including three-way spots).
 - Presets for sanitizers: `linux-asan` (address and undefined behaviour) and `linux-tsan` (threads; OpenMP is off there because its runtime is not instrumented).
 - CI builds and tests on Linux, macOS and Windows, opens the real window on a virtual display on Linux, and produces a downloadable package for each system.
 

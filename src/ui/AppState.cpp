@@ -176,6 +176,11 @@ void AppState::setAutoStopPercent(double percent) {
     engine.setAutoStop(table.hero(), percent / 100.0);
 }
 
+void AppState::setExactWhenPossible(bool on) {
+    exactWhenPossible = on;
+    engine.setExactMode(on);
+}
+
 void AppState::startBenchmark() {
     if (benchmark_.valid()) return;
     pausedBeforeBenchmark_ = paused;
@@ -321,6 +326,7 @@ UserSettings AppState::currentSettings() const {
     s.fixedSeed = fixedSeed;
     s.seed = seedValue;
     s.autoStopPercent = autoStopPercent;
+    s.exactWhenPossible = exactWhenPossible;
     return s;
 }
 
@@ -330,6 +336,7 @@ void AppState::applySettings(const UserSettings& s) {
     setThreads(s.threads);
     setSeed(s.fixedSeed, s.seed);
     setAutoStopPercent(s.autoStopPercent);
+    setExactWhenPossible(s.exactWhenPossible);
 }
 
 bool AppState::exportEquityCsv(const std::string& path) {

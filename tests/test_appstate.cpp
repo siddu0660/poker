@@ -24,9 +24,13 @@ bool waitFor(const std::function<bool()>& cond, double seconds) {
     return cond();
 }
 
-// Pumps frame() until the simulation has produced something for the current situation.
+// Pumps frame() until the simulation has produced something for the current situation:
+// at least `minRuns` samples, or the exact result.
 bool pump(AppState& app, std::uint64_t minRuns, double seconds = 20) {
-    return waitFor([&] { app.frame(); return app.snap.error.empty() && app.snap.runs >= minRuns; }, seconds);
+    return waitFor([&] {
+        app.frame();
+        return app.snap.error.empty() && (app.snap.exact || app.snap.runs >= minRuns);  // an exact result is final
+    }, seconds);
 }
 
 AppState makeApp() { return AppState(PF_RULES_DIR); }
@@ -335,6 +339,7 @@ PF_TEST(settings_round_trip_and_defaults) {
     s.fixedSeed = true;
     s.seed = 18446744073709551615ull;
     s.autoStopPercent = 0.5;
+    s.exactWhenPossible = false;
     CHECK(settingsFromJson(settingsToJson(s)) == s);
     CHECK(settingsFromJson("{}") == UserSettings{});
 
@@ -414,4 +419,24 @@ PF_TEST(app_paths_with_non_ascii_folders) {
     CHECK(saveSettings(s, pathToUtf8(dir / "settings.json")));
     CHECK(loadSettings(pathToUtf8(dir / "settings.json")) == s);
     removeQuietly(dir);
+}
+
+PF_TEST(app_exact_mode_setting) {
+    AppState app = makeApp();
+    app.setSeatCount(2);
+    app.setSeatKnown(1, true);  // both hands known preflop: 1,712,304 deals, exact
+    CHECK(waitFor([&] { app.frame(); return app.snap.exact; }, 30));
+    CHECK_EQ(app.snap.exactDeals, 1712304u);
+    double sum = app.snap.equity(0) + app.snap.equity(1);
+    CHECK(std::abs(sum - 1.0) < 1e-12);
+
+    app.setExactWhenPossible(false);  // persisted and sent to the engine
+    CHECK(!app.currentSettings().exactWhenPossible);
+    CHECK(pump(app, 5000));
+    CHECK(!app.snap.exact);
+
+    UserSettings s = app.currentSettings();
+    s.exactWhenPossible = true;
+    app.applySettings(s);
+    CHECK(waitFor([&] { app.frame(); return app.snap.exact; }, 30));
 }

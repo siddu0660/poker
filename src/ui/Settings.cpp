@@ -30,6 +30,7 @@ std::string settingsToJson(const UserSettings& s) {
         {"threads", s.threads},
         {"seed", {{"fixed", s.fixedSeed}, {"value", s.seed}}},
         {"auto_stop_percent", s.autoStopPercent},
+        {"exact_when_possible", s.exactWhenPossible},
     };
     return doc.dump(2) + "\n";
 }
@@ -76,6 +77,7 @@ UserSettings settingsFromJson(std::string_view text, std::vector<std::string>* w
         }
     }
     number(doc, "auto_stop_percent", out.autoStopPercent, 0.0, 5.0);
+    flag(doc, "exact_when_possible", out.exactWhenPossible);
     return out;
 }
 

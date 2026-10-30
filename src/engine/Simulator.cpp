@@ -117,13 +117,39 @@ Prepared prepare(const Scenario& s) {
     return p;
 }
 
+// Scores one complete deal: `drawn[k]` are the random hole cards dealt to
+// active seat k. Monte Carlo and exact enumeration both go through here, so
+// they cannot disagree about who wins or how a split is counted.
+inline void scoreDeal(const Prepared& p, CardMask board, const std::array<CardMask, kMaxSeats>& drawn, Tally& t) {
+    std::array<HandScore, kMaxSeats> score{};
+    HandScore best = 0;
+    int winners = 0;
+    for (std::size_t k = 0; k < static_cast<std::size_t>(p.seatCount); ++k) {
+        const HandScore s = p.ev->evaluate(board | p.known[k] | drawn[k]);
+        score[k] = s;
+        if (s > best) { best = s; winners = 1; }
+        else if (s == best) ++winners;
+    }
+    const std::uint64_t share = static_cast<std::uint64_t>(kEquityUnits / winners);
+    for (std::size_t k = 0; k < static_cast<std::size_t>(p.seatCount); ++k) {
+        SeatTally& st = t.seats[static_cast<std::size_t>(p.seatIndex[k])];
+        ++st.hands[static_cast<std::size_t>(scoreCategory(score[k]))];
+        if (score[k] != best) continue;
+        if (winners == 1) ++st.wins;
+        else ++st.ties;
+        st.equity += share;
+        st.equitySq += share * share;
+    }
+    ++t.runs;
+}
+
 void runChunk(const Prepared& p, std::uint64_t chunk, std::vector<CardId>& pool, Tally& t) {
     // Each chunk starts from the same pool order and its own RNG stream, so
     // its result is independent of which thread runs it or what ran before.
     std::copy(p.pool.begin(), p.pool.end(), pool.begin());
     Rng rng(p.seed, chunk);
     const auto poolSize = static_cast<std::uint32_t>(pool.size());
-    std::array<HandScore, kMaxSeats> score{};
+    std::array<CardMask, kMaxSeats> drawn{};
 
     for (int run = 0; run < kChunkRuns; ++run) {
         for (int i = 0; i < p.deal; ++i) {  // partial Fisher-Yates
@@ -133,32 +159,145 @@ void runChunk(const Prepared& p, std::uint64_t chunk, std::vector<CardId>& pool,
         std::size_t d = 0;
         CardMask board = p.board;
         for (int i = 0; i < p.boardMissing; ++i) board |= bit(pool[d++]);
-
-        HandScore best = 0;
-        int winners = 0;
         for (std::size_t k = 0; k < static_cast<std::size_t>(p.seatCount); ++k) {
-            CardMask hand = board | p.known[k];
-            for (int i = 0; i < p.unknown[k]; ++i) hand |= bit(pool[d++]);
-            const HandScore s = p.ev->evaluate(hand);
-            score[k] = s;
-            if (s > best) { best = s; winners = 1; }
-            else if (s == best) ++winners;
+            drawn[k] = 0;
+            for (int i = 0; i < p.unknown[k]; ++i) drawn[k] |= bit(pool[d++]);
         }
-        const std::uint64_t share = static_cast<std::uint64_t>(kEquityUnits / winners);
-        for (std::size_t k = 0; k < static_cast<std::size_t>(p.seatCount); ++k) {
-            SeatTally& st = t.seats[static_cast<std::size_t>(p.seatIndex[k])];
-            ++st.hands[static_cast<std::size_t>(scoreCategory(score[k]))];
-            if (score[k] != best) continue;
-            if (winners == 1) ++st.wins;
-            else ++st.ties;
-            st.equity += share;
-            st.equitySq += share * share;
-        }
+        scoreDeal(p, board, drawn, t);
     }
-    t.runs += kChunkRuns;
 }
 
+// ---- exact enumeration
+
+// What is dealt, in order: each active seat's unknown hole cards, then the rest
+// of the board. Seats are distinct, so a deal is one choice per stage.
+struct Stage {
+    int seat;   // active-seat slot, or -1 for the board
+    int count;  // cards chosen at this stage
+};
+
+std::vector<Stage> stagesOf(const Prepared& p) {
+    std::vector<Stage> out;
+    for (int k = 0; k < p.seatCount; ++k)
+        if (p.unknown[static_cast<std::size_t>(k)] > 0) out.push_back({k, p.unknown[static_cast<std::size_t>(k)]});
+    if (p.boardMissing > 0) out.push_back({-1, p.boardMissing});
+    return out;
+}
+
+// n choose k, or 0 when it exceeds `cap` (the caller only needs to know "too many").
+std::uint64_t chooseCapped(std::uint64_t n, int k, std::uint64_t cap) {
+    if (k < 0 || static_cast<std::uint64_t>(k) > n) return 0;
+    std::uint64_t r = 1;
+    for (int i = 1; i <= k; ++i) {
+        r = r * (n - static_cast<std::uint64_t>(k) + static_cast<std::uint64_t>(i)) / static_cast<std::uint64_t>(i);
+        if (r > cap) return 0;
+    }
+    return r;
+}
+
+// Calls f(mask) for every k-card subset of `cards`.
+template <class F>
+void forEachSubset(const std::vector<CardId>& cards, int k, F&& f) {
+    const int n = static_cast<int>(cards.size());
+    if (k == 0) { f(CardMask{0}); return; }
+    if (k > n) return;
+    std::array<int, 5> idx{};
+    for (int i = 0; i < k; ++i) idx[static_cast<std::size_t>(i)] = i;
+    while (true) {
+        CardMask m = 0;
+        for (int i = 0; i < k; ++i) m |= bit(cards[static_cast<std::size_t>(idx[static_cast<std::size_t>(i)])]);
+        f(m);
+        int i = k - 1;
+        while (i >= 0 && idx[static_cast<std::size_t>(i)] == n - k + i) --i;
+        if (i < 0) return;
+        ++idx[static_cast<std::size_t>(i)];
+        for (int j = i + 1; j < k; ++j) idx[static_cast<std::size_t>(j)] = idx[static_cast<std::size_t>(j - 1)] + 1;
+    }
+}
+
+struct Enumerator {
+    const Prepared& p;
+    const std::vector<Stage>& stages;
+    Tally& tally;
+    std::array<CardMask, kMaxSeats> drawn{};
+    CardMask board = p.board;  // the revealed cards; a board stage, if any, adds the rest
+
+    void run(std::size_t stage, CardMask used) {
+        if (stage == stages.size()) {
+            scoreDeal(p, board, drawn, tally);
+            return;
+        }
+        std::vector<CardId> left;
+        left.reserve(p.pool.size());
+        for (CardId c : p.pool)
+            if (!(used & bit(c))) left.push_back(c);
+        forEachSubset(left, stages[stage].count, [&](CardMask m) {
+            assign(stage, m);
+            run(stage + 1, used | m);
+        });
+    }
+
+    void assign(std::size_t stage, CardMask m) {
+        if (stages[stage].seat < 0) board = p.board | m;
+        else drawn[static_cast<std::size_t>(stages[stage].seat)] = m;
+    }
+};
+
 }  // namespace
+
+std::optional<std::uint64_t> countDeals(const Scenario& s, std::uint64_t limit) {
+    if (!validateScenario(s).empty()) return std::nullopt;
+    const Prepared p = prepare(s);
+    std::uint64_t total = 1;
+    std::uint64_t left = p.pool.size();
+    for (const Stage& st : stagesOf(p)) {
+        const std::uint64_t ways = chooseCapped(left, st.count, limit);
+        if (ways == 0 || total > limit / ways) return std::nullopt;
+        total *= ways;
+        left -= static_cast<std::uint64_t>(st.count);
+    }
+    return total;
+}
+
+Tally enumerateExact(const Scenario& s, int threads, const std::atomic<bool>* cancel) {
+    const Prepared p = prepare(s);
+    const std::vector<Stage> stages = stagesOf(p);
+    if (stages.empty()) {  // everything is known: a single deal
+        Tally t;
+        scoreDeal(p, p.board, std::array<CardMask, kMaxSeats>{}, t);
+        return t;
+    }
+
+    // Split the work on the first stage's choices; each thread walks the rest.
+    std::vector<CardMask> first;
+    forEachSubset(p.pool, stages[0].count, [&](CardMask m) { first.push_back(m); });
+    if (threads <= 0) threads = hardwareThreads();
+    threads = std::clamp(threads, 1, std::max(1, static_cast<int>(first.size())));
+    std::vector<Tally> local(static_cast<std::size_t>(threads));
+    const int n = static_cast<int>(first.size());
+
+    // OpenMP loops cannot break early, so a cancelled run skips its remaining items instead.
+    auto cancelled = [&] { return cancel && cancel->load(std::memory_order_relaxed); };
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(threads) schedule(dynamic, 1)
+    for (int i = 0; i < n; ++i) {
+        if (cancelled()) continue;
+        Enumerator e{p, stages, local[static_cast<std::size_t>(omp_get_thread_num())]};
+        e.assign(0, first[static_cast<std::size_t>(i)]);
+        e.run(1, first[static_cast<std::size_t>(i)]);
+    }
+#else
+    for (int i = 0; i < n && !cancelled(); ++i) {
+        Enumerator e{p, stages, local[0]};
+        e.assign(0, first[static_cast<std::size_t>(i)]);
+        e.run(1, first[static_cast<std::size_t>(i)]);
+    }
+#endif
+
+    Tally total;
+    for (const Tally& t : local) total.merge(t);
+    return total;
+}
 
 Tally runChunks(const Scenario& s, std::uint64_t firstChunk, int chunks, int threads) {
     const Prepared p = prepare(s);
@@ -200,11 +339,13 @@ double Snapshot::equity(int s) const {
     return ratio(seats[static_cast<std::size_t>(s)].equity, runs) / kEquityUnits;
 }
 double Snapshot::winCI95(int s) const {
+    if (exact) return 0.0;
     if (!runs) return 1.0;
     const double p = win(s);
     return 1.96 * std::sqrt(p * (1.0 - p) / static_cast<double>(runs));
 }
 double Snapshot::equityCI95(int s) const {
+    if (exact) return 0.0;
     if (runs < 2) return 1.0;
     const auto n = static_cast<double>(runs);
     const auto& st = seats[static_cast<std::size_t>(s)];
@@ -225,6 +366,7 @@ SimEngine::~SimEngine() {
     {
         std::lock_guard lock(mu_);
         stop_ = true;
+        cancelExact_.store(true, std::memory_order_relaxed);
         ++wake_;
     }
     cv_.notify_all();
@@ -235,21 +377,39 @@ void SimEngine::setScenario(Scenario s) {
     std::string err = validateScenario(s);
     {
         std::lock_guard lock(mu_);
-        ++epoch_;
-        ++wake_;
-        totals_ = Tally{};
-        nextChunk_ = 0;
-        autoStopped_ = false;
-        lastBatchMs_ = 0;
-        lastBatchRuns_ = 0;
-        runsPerSec_ = 0;
-        epochStart_ = windowStart_ = Clock::now();
-        windowRuns_ = 0;
-        windowComputeMs_ = 0;
+        resetLocked();
         error_ = err;
         scenario_ = err.empty() ? std::make_shared<const Scenario>(std::move(s)) : nullptr;
     }
     if (!err.empty()) logError("[Simulation] " + err);
+    cv_.notify_all();
+}
+
+void SimEngine::resetLocked() {
+    ++epoch_;
+    ++wake_;
+    totals_ = Tally{};
+    nextChunk_ = 0;
+    autoStopped_ = false;
+    exactChecked_ = exactDone_ = computingExact_ = false;
+    cancelExact_.store(true, std::memory_order_relaxed);  // stop an enumeration for the old scenario
+    exactDeals_ = 0;
+    lastBatchMs_ = 0;
+    lastBatchRuns_ = 0;
+    runsPerSec_ = 0;
+    epochStart_ = windowStart_ = Clock::now();
+    windowRuns_ = 0;
+    windowComputeMs_ = 0;
+}
+
+void SimEngine::setExactMode(bool allowed, std::uint64_t maxDeals) {
+    {
+        std::lock_guard lock(mu_);
+        if (allowed == exactAllowed_ && maxDeals == exactLimit_) return;
+        exactAllowed_ = allowed;
+        exactLimit_ = maxDeals;
+        resetLocked();  // the same scenario, started again under the new mode
+    }
     cv_.notify_all();
 }
 
@@ -297,6 +457,9 @@ Snapshot SimEngine::snapshot() const {
     s.lastBatchRuns = lastBatchRuns_;
     s.paused = paused_;
     s.autoStopped = autoStopped_;
+    s.exact = exactDone_;
+    s.computingExact = computingExact_;
+    s.exactDeals = exactDeals_;
     s.error = error_;
     return s;
 }
@@ -312,10 +475,45 @@ int SimEngine::chooseChunks() const {
 void SimEngine::loop() {
     std::unique_lock lock(mu_);
     while (!stop_) {
-        if (!scenario_ || paused_ || autoStopped_) {
+        if (!scenario_ || paused_ || autoStopped_ || exactDone_) {
             cv_.wait(lock);
             continue;
         }
+
+        // Once per scenario: if every deal can be enumerated quickly, do that instead of sampling.
+        if (exactAllowed_ && !exactChecked_) {
+            exactChecked_ = true;
+            const auto scenario = scenario_;
+            const std::uint64_t epoch = epoch_;
+            const std::uint64_t limit = exactLimit_;
+            const int threads = threads_;
+            lock.unlock();
+            const auto deals = countDeals(*scenario, limit);
+            lock.lock();
+            if (!deals || epoch != epoch_) continue;  // too many deals: sample instead
+
+            computingExact_ = true;
+            cancelExact_.store(false, std::memory_order_relaxed);
+            lock.unlock();
+            const auto t0 = Clock::now();
+            Tally exact = enumerateExact(*scenario, threads, &cancelExact_);
+            const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+            lock.lock();
+            if (epoch != epoch_) continue;  // the scenario changed meanwhile
+            computingExact_ = false;
+            totals_ = std::move(exact);
+            exactDone_ = true;
+            exactDeals_ = *deals;
+            lastBatchMs_ = ms;
+            lastBatchRuns_ = totals_.runs;
+            runsPerSec_ = ms > 0 ? static_cast<double>(totals_.runs) / (ms / 1000.0) : 0.0;
+            char line[160];
+            std::snprintf(line, sizeof line, "[Simulation] Exact: all %s deals evaluated in %.0f ms",
+                          withCommas(totals_.runs).c_str(), ms);
+            Log::instance().add(LogLevel::Sim, line);
+            continue;
+        }
+
         const auto scenario = scenario_;
         const std::uint64_t epoch = epoch_;
         const std::uint64_t first = nextChunk_;

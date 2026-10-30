@@ -26,10 +26,11 @@ double bernoulliCI(double p, std::uint64_t n) {
     return n ? 1.96 * std::sqrt(std::max(0.0, p * (1.0 - p)) / static_cast<double>(n)) : 1.0;
 }
 
-void readout(const char* label, double p, std::uint64_t runs, ImU32 color) {
+void readout(const char* label, double p, std::uint64_t runs, bool exact, ImU32 color) {
     ImGui::TextDisabled("%s", label);
     bigText(percent(p).c_str(), 1.9f, color);
-    ImGui::TextDisabled("+/- %s", percent(bernoulliCI(p, runs), 2).c_str());
+    if (exact) ImGui::TextDisabled("exact");
+    else ImGui::TextDisabled("+/- %s", percent(bernoulliCI(p, runs), 2).c_str());
 }
 
 void drawReadouts(AppState& app) {
@@ -47,9 +48,9 @@ void drawReadouts(AppState& app) {
     const double win = s.win(hero), split = s.split(hero), lose = s.lose(hero);
 
     if (ImGui::BeginTable("##readouts", 3, ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableNextColumn(); readout("Win", win, s.runs, Palette::Win);
-        ImGui::TableNextColumn(); readout("Split", split, s.runs, Palette::Split);
-        ImGui::TableNextColumn(); readout("Lose", lose, s.runs, Palette::Lose);
+        ImGui::TableNextColumn(); readout("Win", win, s.runs, s.exact, Palette::Win);
+        ImGui::TableNextColumn(); readout("Split", split, s.runs, s.exact, Palette::Split);
+        ImGui::TableNextColumn(); readout("Lose", lose, s.runs, s.exact, Palette::Lose);
         ImGui::EndTable();
     }
 
@@ -64,8 +65,12 @@ void drawReadouts(AppState& app) {
     dl->AddRect(p, {p.x + w, p.y + h}, IM_COL32(0, 0, 0, 120));
     ImGui::Dummy({w, h + 4.0f});
 
-    ImGui::Text("Overall equity %s +/- %s   |   %s runs", percent(s.equity(hero)).c_str(),
-                percent(s.equityCI95(hero), 2).c_str(), withCommas(s.runs).c_str());
+    if (s.exact)
+        ImGui::Text("Overall equity %s, exact   |   all %s deals", percent(s.equity(hero)).c_str(),
+                    withCommas(s.runs).c_str());
+    else
+        ImGui::Text("Overall equity %s +/- %s   |   %s runs", percent(s.equity(hero)).c_str(),
+                    percent(s.equityCI95(hero), 2).c_str(), withCommas(s.runs).c_str());
 }
 
 void drawEquityChart(AppState& app, float height) {
@@ -301,10 +306,13 @@ void drawSimulationTab(AppState& app) {
             ImGui::TableNextColumn(); ImGui::TextUnformatted(percent(s.split(i)).c_str());
             ImGui::TableNextColumn(); ImGui::TextUnformatted(percent(s.lose(i)).c_str());
             ImGui::TableNextColumn(); ImGui::TextUnformatted(percent(s.equity(i)).c_str());
-            ImGui::TableNextColumn(); ImGui::TextUnformatted(percent(s.equityCI95(i), 2).c_str());
+            ImGui::TableNextColumn();
+            if (s.exact) ImGui::TextDisabled("exact");
+            else ImGui::TextUnformatted(percent(s.equityCI95(i), 2).c_str());
         }
         ImGui::EndTable();
     }
+    if (s.exact) ImGui::TextDisabled("Exact: every one of the %s possible deals was evaluated.", withCommas(s.exactDeals).c_str());
     ImGui::TextDisabled("Equities of the players still in add up to 100%%.");
 }
 

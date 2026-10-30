@@ -13,6 +13,7 @@ namespace {
 
 ImU32 statusColor(const Snapshot& s) {
     if (!s.error.empty()) return Palette::Lose;
+    if (s.exact || s.computingExact) return Palette::Win;
     if (s.autoStopped) return Palette::Split;
     if (s.paused) return Palette::Muted;
     return Palette::Win;
@@ -20,6 +21,8 @@ ImU32 statusColor(const Snapshot& s) {
 
 std::string statusText(const Snapshot& s) {
     if (!s.error.empty()) return "Error: " + s.error;
+    if (s.computingExact) return "Computing every deal...";
+    if (s.exact) return "Exact: all " + withCommas(s.exactDeals) + " deals";
     if (s.autoStopped) return "Auto-stopped (precision reached)";
     if (s.paused) return "Paused";
     return "Running";
@@ -68,6 +71,14 @@ void drawSettingsPanel(AppState& app) {
     if (ImGui::InputScalar("##seed", ImGuiDataType_U64, &seed)) app.setSeed(app.fixedSeed, seed);
     ImGui::EndDisabled();
     if (app.fixedSeed) ImGui::TextDisabled("Press Restart to replay the same run.");
+
+    ImGui::SeparatorText("Accuracy");
+    bool exact = app.exactWhenPossible;
+    if (ImGui::Checkbox("Exact when possible", &exact)) app.setExactWhenPossible(exact);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("When there are at most %s possible deals, evaluate every one of them\n"
+                          "instead of sampling. The result is exact and the simulation then stops.",
+                          withCommas(SimEngine::kDefaultExactDeals).c_str());
 
     ImGui::SeparatorText("Auto-stop");
     ImGui::TextUnformatted("Stop when hero equity is within");

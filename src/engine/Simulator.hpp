@@ -1,10 +1,12 @@
 #pragma once
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -57,6 +59,15 @@ struct alignas(64) Tally {
 // threads <= 0 uses every core. The scenario must be valid.
 Tally runChunks(const Scenario& s, std::uint64_t firstChunk, int chunks, int threads);
 
+// Exact enumeration: every distinct deal of the unknown hole cards and the rest
+// of the board, each counted once. countDeals returns that number, or nullopt
+// when it is above `limit` (or the scenario is invalid). enumerateExact gives a
+// Tally whose `runs` is that count; it is the same for any thread count.
+// `cancel`, if given, is polled while working; once it reads true the result
+// is incomplete and should be thrown away.
+std::optional<std::uint64_t> countDeals(const Scenario& s, std::uint64_t limit);
+Tally enumerateExact(const Scenario& s, int threads, const std::atomic<bool>* cancel = nullptr);
+
 int hardwareThreads();
 
 // What the UI reads: a copy, safe to keep.
@@ -70,14 +81,17 @@ struct Snapshot {
     std::uint64_t lastBatchRuns = 0;
     bool paused = false;
     bool autoStopped = false;
+    bool exact = false;           // every deal was enumerated: the numbers are exact, not estimates
+    bool computingExact = false;  // an exact enumeration is in progress
+    std::uint64_t exactDeals = 0; // how many deals it covered
     std::string error;
 
     double win(int seat) const;
     double split(int seat) const;
     double lose(int seat) const;
     double equity(int seat) const;
-    double winCI95(int seat) const;     // half-width, Bernoulli
-    double equityCI95(int seat) const;  // half-width, from the sample variance
+    double winCI95(int seat) const;     // half-width, Bernoulli (0 when exact)
+    double equityCI95(int seat) const;  // half-width, from the sample variance (0 when exact)
     double handShare(int seat, HandType t) const;
 };
 
@@ -98,12 +112,17 @@ public:
     // Pause once the hero's equity CI half-width is at or below `halfWidth`
     // (a fraction, 0.005 = +-0.5%). halfWidth <= 0 turns it off.
     void setAutoStop(int heroSeat, double halfWidth);
+    // When a scenario has at most `maxDeals` distinct deals, enumerate them all
+    // once (exact) instead of sampling. Restarts the current scenario.
+    void setExactMode(bool allowed, std::uint64_t maxDeals = kDefaultExactDeals);
+    static constexpr std::uint64_t kDefaultExactDeals = 10'000'000;
 
     Snapshot snapshot() const;
 
 private:
     void loop();
     int chooseChunks() const;
+    void resetLocked();  // new epoch, empty totals
 
     mutable std::mutex mu_;
     std::condition_variable cv_;
@@ -123,6 +142,14 @@ private:
     bool autoStopped_ = false;
     int heroSeat_ = 0;
     double autoStopHalfWidth_ = 0;
+
+    bool exactAllowed_ = true;
+    std::uint64_t exactLimit_ = kDefaultExactDeals;
+    bool exactChecked_ = false;  // this epoch's scenario has been counted
+    bool exactDone_ = false;     // totals_ hold the exact result
+    bool computingExact_ = false;
+    std::atomic<bool> cancelExact_{false};  // set when the scenario changes under a running enumeration
+    std::uint64_t exactDeals_ = 0;
 
     double computeRate_ = 0;  // runs per second of compute, for batch sizing
     double runsPerSec_ = 0;

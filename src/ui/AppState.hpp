@@ -69,6 +69,7 @@ public:
     void setThreads(int threads);
     void setSeed(bool fixed, std::uint64_t seed);
     void setAutoStopPercent(double percent);
+    void setExactWhenPossible(bool on);
     void startBenchmark();
     bool benchmarkRunning() const { return benchmark_.valid(); }
 
@@ -113,6 +114,7 @@ public:
     bool fixedSeed = false;
     std::uint64_t seedValue = 12345;
     double autoStopPercent = 0.0;
+    bool exactWhenPossible = true;
     bool paused = false;
 
     BenchmarkResult lastBenchmark;

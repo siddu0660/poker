@@ -20,6 +20,7 @@ struct UserSettings {
     bool fixedSeed = false;
     std::uint64_t seed = 12345;
     double autoStopPercent = 0.0;
+    bool exactWhenPossible = true;  // enumerate every deal when there are few enough
 
     bool operator==(const UserSettings&) const = default;
 };

@@ -207,6 +207,7 @@ PF_TEST(sim_wild_and_short_deck_rules) {
 PF_TEST(sim_engine_lifecycle) {
     SimEngine engine;
     engine.setThreads(2);
+    engine.setExactMode(false);  // this test is about sampling; exact mode has its own test
     auto s = headsUp(RuleSet{}, {c("As"), c("Ah")}, {c("Kd"), c("Kc")});
     engine.setScenario(s);
     CHECK(waitFor([&] { return engine.snapshot().runs >= 50000; }, 20));
@@ -246,6 +247,61 @@ PF_TEST(sim_engine_lifecycle) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     CHECK(!engine.snapshot().error.empty());
     CHECK_EQ(engine.snapshot().runs, 0u);
+}
+
+PF_TEST(sim_engine_exact_mode) {
+    SimEngine engine;
+    auto s = headsUp(RuleSet{}, {c("As"), c("Ah")}, {c("Kd"), c("Kc")});  // 1,712,304 deals
+    engine.setScenario(s);
+    CHECK(waitFor([&] { return engine.snapshot().exact; }, 30));
+    const Snapshot a = engine.snapshot();
+    CHECK_EQ(a.runs, 1712304u);
+    CHECK_EQ(a.exactDeals, 1712304u);
+    CHECK(!a.computingExact);
+    CHECK_EQ(a.equityCI95(0), 0.0);
+    CHECK_EQ(a.winCI95(0), 0.0);
+    CHECK(std::abs(a.equity(0) - 0.812555) < 1e-6);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK_EQ(engine.snapshot().runs, a.runs);  // done: nothing more to sample
+
+    // Too many deals for exact: falls back to sampling.
+    Scenario many;
+    many.evaluator = std::make_shared<const Evaluator>(RuleSet{});
+    many.seats.resize(4);
+    engine.setScenario(many);
+    CHECK(waitFor([&] { return engine.snapshot().runs > 10000; }, 20));
+    CHECK(!engine.snapshot().exact);
+
+    // Turning exact mode off restarts the same scenario as Monte Carlo.
+    engine.setScenario(s);
+    CHECK(waitFor([&] { return engine.snapshot().exact; }, 30));
+    const auto epoch = engine.snapshot().epoch;
+    engine.setExactMode(false);
+    CHECK(engine.snapshot().epoch > epoch);
+    CHECK(waitFor([&] { return engine.snapshot().runs > 10000; }, 20));
+    CHECK(!engine.snapshot().exact);
+    CHECK(engine.snapshot().equityCI95(0) > 0.0);
+
+    // A low limit also forces sampling.
+    engine.setExactMode(true, 1000);
+    CHECK(waitFor([&] { return engine.snapshot().runs > 10000; }, 20));
+    CHECK(!engine.snapshot().exact);
+}
+
+PF_TEST(sim_engine_exact_is_cancelled_by_a_new_scenario) {
+    // Heads-up preflop against a random hand: about 2.1 billion deals, far too many to
+    // finish. With the limit lifted the engine starts on it; a new scenario must not wait.
+    SimEngine engine;
+    engine.setExactMode(true, 5'000'000'000ull);
+    engine.setScenario(headsUp(RuleSet{}, {c("As"), c("Ah")}, {kNoCard, kNoCard}));
+    CHECK(waitFor([&] { return engine.snapshot().computingExact; }, 10));
+    const auto start = std::chrono::steady_clock::now();
+    engine.setScenario(headsUp(RuleSet{}, {c("As"), c("Ah")}, {c("Kd"), c("Kc")},
+                               {c("2c"), c("7d"), c("9h"), c("Js")}));  // 44 deals
+    CHECK(waitFor([&] { return engine.snapshot().exact; }, 10));
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    CHECK(secs < 5.0);
+    CHECK_EQ(engine.snapshot().runs, 44u);
 }
 
 PF_TEST(sim_engine_rate_limit) {

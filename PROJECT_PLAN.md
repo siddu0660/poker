@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **v1 feature-complete (M0–M7).** What is left is the manual UI checklist in §9, running the Windows and macOS windows by hand, and the backlog. This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **v1 feature-complete (M0–M7); backlog in progress (B3 done).** Still open: the manual UI checklist in §9 and running the Windows and macOS windows by hand. This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -195,6 +195,13 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
 - **Snapshot** for the UI: totals, runs/sec, last batch time, paused flag, epoch.
 - **Determinism (decided in M4)**: runs are grouped into fixed 256-run chunks. Chunk *i* always uses RNG stream *i* and restarts from the same pool order, and tallies are integers (a split between *m* winners scores 60/*m* units each, exact for up to 6 seats). A fixed seed therefore gives bit-identical totals for any thread count or batch sizing. Equity CIs use the exact sample variance (sum of squared per-run equity).
 - **Folded seats**: known cards of folded seats are dead (removed from the deck); folded seats get no equity.
+
+### 5.4.1 Exact enumeration (backlog B3)
+- A **deal** is one choice of the unknown hole cards for each active seat (seats are distinct, so they are dealt in seat order) followed by the rest of the board. `countDeals` multiplies the binomials, stopping as soon as the product passes the limit; `enumerateExact` walks every deal.
+- Monte Carlo and enumeration score a deal with the same `scoreDeal`, so they cannot disagree on winners or splits. Integer tallies make the exact result identical for any thread count.
+- The worker counts once per scenario. At or under the limit (default 10M deals, about 0.2 s on 4 cores) it enumerates, publishes the result marked `exact` (confidence intervals are 0) and goes idle; above it, it samples as before. "Exact when possible" can be turned off in Settings.
+- An enumeration is cancelled as soon as the scenario changes (an atomic flag polled per work item), so a new click never waits for a stale result.
+- Typical sizes: heads-up with both hands known, preflop 1,712,304 deals; hero against one random hand, flop 1,070,190 and turn 45,540; river against two random hands 893,970. Preflop against a random hand (about 2.1 billion) is sampled.
 
 ### 5.5 Hand analysis (current hand, outs, draws)
 Implemented in `core/HandAnalysis`: `analyzeMadeHand`, `exactFinalDistribution`, `analyzeHand`, `reachShares`. Decisions made in M5:
@@ -402,7 +409,7 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 |---|---|---|
 | B1 | Betting-action simulation (fold / call / raise per street, pot growth, side pots) | [ ] |
 | B2 | Hand-range input (e.g. "top 15%") for opponents | [ ] |
-| B3 | Exact enumeration mode when the number of combinations is small | [ ] |
+| B3 | Exact enumeration mode when the number of combinations is small | [x] up to 10M deals, enumerated once and cancellable; checked against brute force |
 | B4 | More variants: Omaha, hi-lo, variable hole-card count | [ ] |
 | B5 | Strategy / solver hooks (CFR) | [ ] |
 | B6 | Packaging: Windows installer, macOS app bundle, Linux AppImage | [~] zip/tar.gz packages exist (M7); installer, bundle and AppImage do not |
