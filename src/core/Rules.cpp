@@ -146,6 +146,14 @@ std::string_view wildModeDisplay(WildMode w) { return lookupDisplay(kWild, w); }
 std::string_view bettingKey(BettingStructure b) { return lookupKey(kBetting, b); }
 std::string_view bettingDisplay(BettingStructure b) { return lookupDisplay(kBetting, b); }
 
+std::vector<CardId> deckFor(const RuleSet& rules) {
+    std::vector<CardId> deck;
+    for (int s = 0; s < kSuits; ++s)
+        for (int r = rules.minRank(); r < kRanks; ++r) deck.push_back(makeCard(s, r));
+    for (int j = 0; j < rules.jokers && j < 2; ++j) deck.push_back(static_cast<CardId>(kJokerA + j));
+    return deck;
+}
+
 std::vector<HandType> standardOrder() {
     return {HandType::HighCard, HandType::Pair, HandType::TwoPair, HandType::ThreeOfAKind,
             HandType::Straight, HandType::Flush, HandType::FullHouse, HandType::FourOfAKind,

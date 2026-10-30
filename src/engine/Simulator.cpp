@@ -17,14 +17,6 @@ namespace pf {
 
 using Clock = std::chrono::steady_clock;
 
-std::vector<CardId> deckFor(const RuleSet& rules) {
-    std::vector<CardId> deck;
-    for (int s = 0; s < kSuits; ++s)
-        for (int r = rules.minRank(); r < kRanks; ++r) deck.push_back(makeCard(s, r));
-    for (int j = 0; j < rules.jokers && j < 2; ++j) deck.push_back(static_cast<CardId>(kJokerA + j));
-    return deck;
-}
-
 std::string validateScenario(const Scenario& s) {
     if (!s.evaluator) return "No rules loaded";
     if (s.seats.empty() || s.seats.size() > kMaxSeats)

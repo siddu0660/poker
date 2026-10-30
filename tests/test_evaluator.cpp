@@ -31,13 +31,6 @@ std::vector<CardId> cardsOf(CardMask m) {
     return out;
 }
 
-std::vector<CardId> deckFor(const RuleSet& r) {
-    std::vector<CardId> deck;
-    for (int s = 0; s < kSuits; ++s)
-        for (int k = r.minRank(); k < kRanks; ++k) deck.push_back(makeCard(s, k));
-    return deck;
-}
-
 CardMask randomHand(Rng& rng, const std::vector<CardId>& deck, int n) {
     CardMask m = 0;
     while (popcount(m) < n) m |= bit(deck[rng.below(static_cast<std::uint32_t>(deck.size()))]);

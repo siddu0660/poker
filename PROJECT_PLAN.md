@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **M0 (headless) and M1–M4 done; M5 (table state + hand analysis) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **M0 (headless) and M1–M5 done; M6 (UI panels) next.** This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -197,6 +197,11 @@ Chosen approach: **bitboard rank-mask evaluation** with 8192-entry tables. It su
 - **Folded seats**: known cards of folded seats are dead (removed from the deck); folded seats get no equity.
 
 ### 5.5 Hand analysis (current hand, outs, draws)
+Implemented in `core/HandAnalysis`: `analyzeMadeHand`, `exactFinalDistribution`, `analyzeHand`, `reachShares`. Decisions made in M5:
+- **Outs** for a row are the unseen cards after which the hero's best hand is *that type or better* (so a flush draw gives 9 flush outs, an open-ended draw 8 straight outs). Rows the hero already holds show no outs. Outs are only given on the flop and turn (the next card).
+- **Exact by-river shares** come from enumerating every board completion (1,081 on the flop, 46 on the turn), only while the count is at most 20,000; preflop is left to the simulator. A row is greyed out (`possible = false`) when its exact share is 0 and the hero does not already hold it.
+- **Dead cards**: known opponent cards (folded or not) are removed from the hero's unseen cards.
+- **Draw text** is skipped when wild cards are in play. A straight on the board alone is not a hero draw. "Double gutshot" means two completing ranks not exactly five apart (so short deck's 6-7-8-9 with an Ace or a Ten is one).
 Powers the "Your hand now" card and the "Hands you can get" table. It lives in the core library next to the evaluator.
 - **Current hand**: evaluate hole + revealed board with the rules-aware evaluator. Returns the category, the winning 5 cards (for highlighting), and a readable description from the score ("Two Pair, Kings and Tens, Queen kicker"). Works with wild cards and custom rankings.
 - **Outs (exact)**: for each unseen card, add it to the board and re-evaluate. The cards that upgrade the hero's category (or beat the current best score) are the outs. With at most 47 unseen cards this is tiny and exact, and it runs on the UI thread whenever the board or rules change. On the turn this gives "next card" outs. On the flop it also gives two-card combinations (about 1,000 evaluations), still instant.
@@ -208,6 +213,8 @@ Powers the "Your hand now" card and the "Hands you can get" table. It lives in t
 - **Opponent view**: the same analysis runs for any seat when selected as hero, so the table can show each seat's made hand.
 
 ### 5.6 Table state
+Implemented in `engine/TableState` and `core/Betting.hpp`. Decisions made in M5: every hand starts from full stacks (v1 has no betting simulation), the hero is always a known hand, opponents default to random hands (their real cards are still dealt, for the showdown), the last active player cannot fold, and heads-up the dealer posts the small blind. A seat's equity history is stored under the street being left, and folded seats carry `kNoEquity`.
+
 - Seats 2–6: name, hole cards, known/random flag, stack, current bet, folded.
 - The full 5-card board is dealt up front but only the revealed part is shown and simulated (no peeking).
 - Actions: New Hand (posts blinds and antes, sets dealer), Next Street (flop → turn → river). Before each street change, the final equity of the street being left is saved into the equity history.
@@ -367,7 +374,7 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 | M2 | Evaluator without wilds, passes the C(52,7) distribution check | [x] all 133,784,560 hands match; ~47M evals/s/core on random hands |
 | M3 | Evaluator extras: short deck, custom order, disabled types, wild-card path | [x] every 5-card deuces-wild hand matches brute force and the published frequencies |
 | M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [x] ~18M six-player runs/s on 4 cores; results bit-identical for any thread count |
-| M5 | Table state + hand analysis (current hand, outs, draws) | [ ] |
+| M5 | Table state + hand analysis (current hand, outs, draws) | [x] `HandAnalysis`, `TableState`, `Betting.hpp`; outs and by-river shares checked against exact enumeration |
 | M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [ ] |
 | M7 | Polish: menu, drag-and-drop, CSV export, layout reset, theme switch (classic felt / flat modern), README | [ ] |
 | CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] workflow written incl. non-gating benchmark step; Windows/macOS jobs not yet seen running |
