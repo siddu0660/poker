@@ -28,7 +28,9 @@ endif()
 
 add_library(pf_options INTERFACE)
 if(MSVC)
-  target_compile_options(pf_options INTERFACE /W4 /utf-8)
+  # C4324 "structure was padded due to alignment specifier" is the point of
+  # alignas(64) on per-thread tallies (no false sharing), so it is not a warning here.
+  target_compile_options(pf_options INTERFACE /W4 /utf-8 /wd4324)
   if(PF_WARNINGS_AS_ERRORS)
     target_compile_options(pf_options INTERFACE /WX)
   endif()
