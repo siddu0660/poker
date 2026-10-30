@@ -2,7 +2,7 @@
 
 A desktop tool for real-time poker odds. A parallel Monte Carlo backend (C++20, OpenMP, O(1) bitboard hand evaluation) drives a dockable Dear ImGui / SDL2 / ImPlot front end. Rules are data-driven through JSON.
 
-> Status: **M0–M6 done; M7 (polish) next.** The five panels run on a docked window; the manual UI checklist in §9 has not been walked through yet. This file is the single source of truth for what gets built, in what order, and how it is verified.
+> Status: **v1 feature-complete (M0–M7).** What is left is the manual UI checklist in §9, running the Windows and macOS windows by hand, and the backlog. This file is the single source of truth for what gets built, in what order, and how it is verified.
 
 ---
 
@@ -282,6 +282,15 @@ Edits a **draft** copy; **Apply Rules** commits (highlighted when dirty), **Reve
 - **Scripted runs**: `pokerforge --frames N --advance K --players N --seed S --tab T --fold A,B --size WxH --screenshot f.ppm` runs without user input; CI uses it as a smoke test under xvfb.
 - **Not done in M6**: moving a window between monitors with different DPI keeps the font size picked at start-up; the Windows and macOS UI builds are only checked by CI.
 
+### How the polish works (M7)
+- **Menus**: File (import and export rules, export equity CSV, quit), Game (new hand, next street, pause, restart), View (panels, theme, reset layout), Help (shortcuts, About). Every menu action and every button goes through the same `AppState` method, so they cannot disagree.
+- **Dialogs**: one modal at a time, chosen by `AppState::dialog`. There is no native file picker (that would add a dependency per platform): import offers the rules folder plus a path field, and exports offer a path field with a sensible default.
+- **Drop and keys**: dropping a `.json` file imports it into the rules *draft* (it is never applied silently). Shortcuts are function keys and Ctrl chords so they never fight with typing.
+- **Settings**: `settings.json` in the pref folder holds the theme, speed, threads, seed and auto-stop. Loading is lenient: a bad field keeps its default and logs a warning. Rules and the dock layout are not part of it (rules are explicit; the layout is `imgui.ini`).
+- **Themes**: the table colours and the ImGui style are two palettes over the same layout. A theme change restyles between frames and saves immediately.
+- **CSV**: one row per street played (`hand,street,<player columns>`), equity in percent with four decimals, folded players left empty.
+- **Packaging**: `cpack` archives the executable, `rules/` and the README; `findRulesDir` looks beside the executable first, so an unpacked folder works from anywhere.
+
 ### Notes from the reference screenshot
 What to keep:
 - Left column for Settings, Rules in the middle, Equity on the right, Table below, Console at the bottom right.
@@ -385,7 +394,7 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 | M4 | Simulator: OpenMP batches, snapshot, CI, speed control, benchmark | [x] ~18M six-player runs/s on 4 cores; results bit-identical for any thread count |
 | M5 | Table state + hand analysis (current hand, outs, draws) | [x] `HandAnalysis`, `TableState`, `Betting.hpp`; outs and by-river shares checked against exact enumeration |
 | M6 | UI panels wired to the engine (Settings, Rules, Table, Equity, Console) | [x] all five panels, default dock layout, scripted screenshots; popups and menus only checked by code and state tests |
-| M7 | Polish: menu, drag-and-drop, CSV export, layout reset, theme switch (classic felt / flat modern), README | [ ] |
+| M7 | Polish: menu, drag-and-drop, CSV export, layout reset, theme switch (classic felt / flat modern), README | [x] menus and F-key shortcuts, drop import, CSV export, saved settings, two themes, README, tar/zip packages |
 | CI | GitHub Actions matrix (Linux, Windows, macOS) with tests and benchmark | [~] builds and tests on all three; builds the UI too and smoke-runs it under xvfb on Linux (new in M6, not yet seen running) |
 
 ### Backlog (deferred, tracked only)
@@ -396,7 +405,7 @@ Status: `[ ]` not started, `[~]` in progress, `[x]` done. Update this table as w
 | B3 | Exact enumeration mode when the number of combinations is small | [ ] |
 | B4 | More variants: Omaha, hi-lo, variable hole-card count | [ ] |
 | B5 | Strategy / solver hooks (CFR) | [ ] |
-| B6 | Packaging: Windows installer, macOS app bundle, Linux AppImage | [ ] |
+| B6 | Packaging: Windows installer, macOS app bundle, Linux AppImage | [~] zip/tar.gz packages exist (M7); installer, bundle and AppImage do not |
 | B7 | Animation system (deal, flip, chip slide, equity easing) and sound | [ ] |
 
 ### Open items

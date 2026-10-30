@@ -18,6 +18,17 @@ const char* rankLabel(int rank) {
 }
 }  // namespace
 
+const ThemeColors& themeColors(Theme theme) {
+    // Classic felt: green cloth in a wooden rail. Flat modern: slate surface, thin teal rim, no texture.
+    static const ThemeColors classic{IM_COL32(24, 92, 62, 255), IM_COL32(16, 66, 44, 255),
+                                     IM_COL32(86, 54, 32, 255), IM_COL32(120, 80, 50, 255),
+                                     IM_COL32(255, 255, 255, 28), ImVec4{0.07f, 0.08f, 0.10f, 1.0f}};
+    static const ThemeColors flat{IM_COL32(38, 46, 60, 255), IM_COL32(52, 62, 80, 255),
+                                  IM_COL32(24, 29, 38, 255), IM_COL32(38, 166, 154, 255),
+                                  IM_COL32(255, 255, 255, 18), ImVec4{0.10f, 0.11f, 0.13f, 1.0f}};
+    return theme == Theme::FlatModern ? flat : classic;
+}
+
 ImU32 seatColor(int seat) {
     static constexpr std::array<ImU32, 6> colors{
         IM_COL32(86, 156, 245, 255), IM_COL32(240, 128, 70, 255), IM_COL32(120, 210, 120, 255),

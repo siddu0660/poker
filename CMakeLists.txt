@@ -73,7 +73,10 @@ if(PF_ENABLE_LTO AND PF_IPO_OK AND PF_LTO_COMPILER_OK)
 endif()
 
 # The state behind the UI panels: no ImGui or SDL, so it is built (and tested) everywhere.
-add_library(pokerapp STATIC src/ui/AppState.cpp)
+add_library(pokerapp STATIC
+  src/ui/AppState.cpp
+  src/ui/Settings.cpp
+  src/ui/Export.cpp)
 target_include_directories(pokerapp PUBLIC src)
 target_link_libraries(pokerapp PUBLIC pokercore PRIVATE pf_options)
 
@@ -90,15 +93,34 @@ if(PF_BUILD_UI)
     src/main.cpp
     src/ui/App.cpp
     src/ui/DrawUtil.cpp
+    src/ui/Dialogs.cpp
     src/ui/SettingsPanel.cpp
     src/ui/RulesPanel.cpp
     src/ui/TablePanel.cpp
     src/ui/EquityPanel.cpp
     src/ui/ConsolePanel.cpp)
   target_link_libraries(pokerforge PRIVATE pokerapp implot_lib pf_options)
-  target_compile_definitions(pokerforge PRIVATE PF_SOURCE_RULES_DIR="${CMAKE_SOURCE_DIR}/rules")
+  target_compile_definitions(pokerforge PRIVATE PF_SOURCE_RULES_DIR="${CMAKE_SOURCE_DIR}/rules"
+                                              PF_VERSION="${PROJECT_VERSION}")
   # Rules are found next to the executable, so ship them beside it.
   add_custom_command(TARGET pokerforge POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/rules $<TARGET_FILE_DIR:pokerforge>/rules
     COMMENT "Copying rules next to pokerforge")
+
+  # Packaging: `cmake --build <dir> --target package` makes a zip (Windows) or tar.gz holding the
+  # executable, the rules folder and the README, unpacked into one folder that can be moved anywhere.
+  install(TARGETS pokerforge RUNTIME DESTINATION .)
+  install(DIRECTORY rules DESTINATION . FILES_MATCHING PATTERN "*.json")
+  install(FILES README.md DESTINATION .)
+  set(CPACK_PACKAGE_NAME "PokerForge")
+  set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Real-time poker odds with custom rules")
+  set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+  set(CPACK_PACKAGE_FILE_NAME "PokerForge-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+  if(WIN32)
+    set(CPACK_GENERATOR ZIP)
+  else()
+    set(CPACK_GENERATOR TGZ)
+  endif()
+  include(CPack)
 endif()

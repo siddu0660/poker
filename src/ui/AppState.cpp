@@ -1,9 +1,12 @@
 #include "ui/AppState.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <random>
+
+#include "ui/Export.hpp"
 
 namespace pf::ui {
 
@@ -282,6 +285,85 @@ void AppState::setWildMode(WildMode w) {
     if (w == WildMode::Jokers && r.jokers == 0) r.jokers = 1;
     if (w == WildMode::None)
         r.order.erase(std::remove(r.order.begin(), r.order.end(), HandType::FiveOfAKind), r.order.end());
+}
+
+}  // namespace pf::ui
+
+namespace pf::ui {
+
+namespace {
+
+std::string lowerCase(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+// "Short Deck (6+)" -> "short_deck_6"
+std::string fileSafe(const std::string& name) {
+    std::string out;
+    for (char c : name) {
+        if (std::isalnum(static_cast<unsigned char>(c))) out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        else if (!out.empty() && out.back() != '_') out += '_';
+    }
+    while (!out.empty() && out.back() == '_') out.pop_back();
+    return out.empty() ? "rules" : out;
+}
+
+}  // namespace
+
+UserSettings AppState::currentSettings() const {
+    UserSettings s;
+    s.theme = theme;
+    s.runsPerSec = targetRate;
+    s.unlimited = unlimited;
+    s.threads = threads;
+    s.fixedSeed = fixedSeed;
+    s.seed = seedValue;
+    s.autoStopPercent = autoStopPercent;
+    return s;
+}
+
+void AppState::applySettings(const UserSettings& s) {
+    theme = s.theme;
+    setSpeed(s.runsPerSec, s.unlimited);
+    setThreads(s.threads);
+    setSeed(s.fixedSeed, s.seed);
+    setAutoStopPercent(s.autoStopPercent);
+}
+
+bool AppState::exportEquityCsv(const std::string& path) {
+    if (table.equityHistory().empty()) {
+        logWarn("[Engine] Nothing to export yet: no equity has been recorded for this hand");
+        return false;
+    }
+    std::string err;
+    if (!writeTextFile(path, equityCsv(table), &err)) {
+        logError("[Engine] " + err);
+        return false;
+    }
+    logInfo("[Engine] Exported the equity history to " + path);
+    return true;
+}
+
+bool AppState::handleDroppedFile(const std::string& path) {
+    if (lowerCase(std::filesystem::path(path).extension().string()) != ".json") {
+        logWarn("[Engine] Ignored the dropped file \"" + std::filesystem::path(path).filename().string() +
+                "\": only .json rules files can be imported");
+        return false;
+    }
+    if (!importRules(path)) return false;
+    visible.rules = true;  // so the imported draft is in front of the user
+    return true;
+}
+
+std::string AppState::defaultRulesExportPath() const {
+    const std::string file = fileSafe(draft.name) + ".json";
+    return (std::filesystem::path(rulesDir) / file).string();
+}
+
+std::string AppState::defaultCsvPath() const {
+    const std::string file = "equity_hand_" + std::to_string(table.handNumber()) + ".csv";
+    return (exportDir.empty() ? std::filesystem::path(file) : std::filesystem::path(exportDir) / file).string();
 }
 
 }  // namespace pf::ui

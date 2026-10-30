@@ -59,9 +59,27 @@ jobs:
             build/linux-release/pokerforge --frames 120 --advance 3 --players 6 --seed 1 \
             --screenshot "$RUNNER_TEMP/ui.ppm"
           test -s "$RUNNER_TEMP/ui.ppm"
+          # Real SDL key and drop events, a live theme switch and a dialog, in one run.
+          xvfb-run -a -s "-screen 0 1600x900x24" \
+            build/linux-release/pokerforge --frames 150 --players 5 --fold 2 --seed 3 \
+            --press f3,f3,f2,ctrl+e --drop rules/short_deck_36.json --toggle-theme-at 40 \
+            --screenshot "$RUNNER_TEMP/ui2.ppm"
+          test -s "$RUNNER_TEMP/ui2.ppm"
 
       # Throughput varies across runners, so the benchmark reports but never fails the build.
       - name: Benchmark
         shell: bash
         continue-on-error: true
         run: ctest --preset "$PRESET" -C Exhaustive -R benchmark --verbose
+
+      - name: Package
+        shell: bash
+        run: cmake --build --preset "$PRESET" --target package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokerForge-${{ runner.os }}
+          path: |
+            build/*/PokerForge-*.tar.gz
+            build/*/PokerForge-*.zip
+          if-no-files-found: error

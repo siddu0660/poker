@@ -11,6 +11,7 @@
 #include "engine/Benchmark.hpp"
 #include "engine/Simulator.hpp"
 #include "engine/TableState.hpp"
+#include "ui/Settings.hpp"
 #include "util/Log.hpp"
 
 namespace pf::ui {
@@ -29,6 +30,9 @@ struct PanelVisibility {
 };
 
 enum class OrderPreset { Standard, ShortDeck, Custom };
+
+// The one modal dialog that may be open (menus, buttons and shortcuts all open them through here).
+enum class Dialog { None, ImportRules, ExportRules, ExportCsv, About, Shortcuts };
 
 struct SeatView {
     bool visible = false;  // the viewer may see this hand (known, or the cards are turned over)
@@ -80,6 +84,15 @@ public:
     void setHandTypeEnabled(HandType t, bool on);
     void setWildMode(WildMode w);
 
+    // ---- files
+    UserSettings currentSettings() const;
+    void applySettings(const UserSettings& s);
+    bool exportEquityCsv(const std::string& path);
+    // A file dropped on the window: a .json file is imported into the rules draft.
+    bool handleDroppedFile(const std::string& path);
+    std::string defaultRulesExportPath() const;
+    std::string defaultCsvPath() const;
+
     // ---- read by the panels
     RuleSet draft;  // edited in the Rules panel; Apply commits it
     RuleSet applied;
@@ -109,6 +122,10 @@ public:
     bool potOddsFromTable = true;
     int potInput = 0;
     int callInput = 0;
+
+    Theme theme = Theme::ClassicFelt;
+    Dialog dialog = Dialog::None;
+    std::string exportDir;  // where exports go by default; empty = the working directory
 
     PanelVisibility visible;
     ConsoleState console;
